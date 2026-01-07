@@ -37,6 +37,18 @@ db.exec(`
   )
 `);
 
+// ============ 驗證中間件 ============
+const ADMIN_PASSWORD = '1102';
+
+// 驗證管理員密碼
+const authMiddleware = (req, res, next) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token || token !== ADMIN_PASSWORD) {
+    return res.status(401).json({ success: false, error: '需要管理員權限' });
+  }
+  next();
+};
+
 // ============ API 路由 ============
 
 // 1. 儲存/更新問卷進度
@@ -171,8 +183,22 @@ app.post('/api/survey/submit', (req, res) => {
   }
 });
 
-// 3. 取得所有回覆（管理後台用）
-app.get('/api/admin/responses', (req, res) => {
+// 3. 管理員登入驗證
+app.post('/api/admin/login', (req, res) => {
+  try {
+    const { password } = req.body;
+    if (password === ADMIN_PASSWORD) {
+      res.json({ success: true, token: ADMIN_PASSWORD });
+    } else {
+      res.status(401).json({ success: false, error: '密碼錯誤' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 4. 取得所有回覆（管理後台用）
+app.get('/api/admin/responses', authMiddleware, (req, res) => {
   try {
     const responses = db.prepare(`
       SELECT 
@@ -189,8 +215,8 @@ app.get('/api/admin/responses', (req, res) => {
   }
 });
 
-// 4. 取得單一回覆完整資料
-app.get('/api/admin/response/:surveyId', (req, res) => {
+// 5. 取得單一回覆完整資料
+app.get('/api/admin/response/:surveyId', authMiddleware, (req, res) => {
   try {
     const response = db.prepare('SELECT * FROM responses WHERE survey_id = ?').get(req.params.surveyId);
     
@@ -210,8 +236,8 @@ app.get('/api/admin/response/:surveyId', (req, res) => {
   }
 });
 
-// 5. 匯出所有資料為 JSON
-app.get('/api/admin/export/json', (req, res) => {
+// 6. 匯出所有資料為 JSON
+app.get('/api/admin/export/json', authMiddleware, (req, res) => {
   try {
     const responses = db.prepare('SELECT * FROM responses WHERE status = ?').all('completed');
     
@@ -240,8 +266,8 @@ app.get('/api/admin/export/json', (req, res) => {
   }
 });
 
-// 6. 匯出 DEMATEL 矩陣 CSV（所有人）
-app.get('/api/admin/export/dematel-csv', (req, res) => {
+// 7. 匯出 DEMATEL 矩陣 CSV（所有人）
+app.get('/api/admin/export/dematel-csv', authMiddleware, (req, res) => {
   try {
     const responses = db.prepare('SELECT survey_id, respondent_name, dematel_data FROM responses WHERE status = ?').all('completed');
     
@@ -268,8 +294,8 @@ app.get('/api/admin/export/dematel-csv', (req, res) => {
   }
 });
 
-// 7. 匯出 ANP CSV（所有人）
-app.get('/api/admin/export/anp-csv', (req, res) => {
+// 8. 匯出 ANP CSV（所有人）
+app.get('/api/admin/export/anp-csv', authMiddleware, (req, res) => {
   try {
     const responses = db.prepare('SELECT survey_id, respondent_name, anp_dim_data, anp_criteria_data FROM responses WHERE status = ?').all('completed');
     
@@ -308,8 +334,8 @@ app.get('/api/admin/export/anp-csv', (req, res) => {
   }
 });
 
-// 8. 刪除回覆
-app.delete('/api/admin/response/:surveyId', (req, res) => {
+// 9. 刪除回覆
+app.delete('/api/admin/response/:surveyId', authMiddleware, (req, res) => {
   try {
     const stmt = db.prepare('DELETE FROM responses WHERE survey_id = ?');
     stmt.run(req.params.surveyId);
@@ -319,8 +345,8 @@ app.delete('/api/admin/response/:surveyId', (req, res) => {
   }
 });
 
-// 9. 統計資訊
-app.get('/api/admin/stats', (req, res) => {
+// 10. 統計資訊
+app.get('/api/admin/stats', authMiddleware, (req, res) => {
   try {
     const total = db.prepare('SELECT COUNT(*) as count FROM responses').get().count;
     const completed = db.prepare('SELECT COUNT(*) as count FROM responses WHERE status = ?').get('completed').count;
@@ -335,9 +361,115 @@ app.get('/api/admin/stats', (req, res) => {
   }
 });
 
+// 11. 詳細統計分析資料
+app.get('/api/admin/analytics', authMiddleware, (req, res) => {
+  try {
+    // 基本統計
+    const total = db.prepare('SELECT COUNT(*) as count FROM responses').get().count;
+    const completed = db.prepare('SELECT COUNT(*) as count FROM responses WHERE status = ?').get('completed').count;
+    const inProgress = db.prepare('SELECT COUNT(*) as count FROM responses WHERE status = ?').get('in_progress').count;
+
+    // 每日填寫統計
+    const dailyStats = db.prepare(`
+      SELECT 
+        DATE(created_at) as date,
+        COUNT(*) as count,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count
+      FROM responses 
+      GROUP BY DATE(created_at)
+      ORDER BY date DESC
+      LIMIT 30
+    `).all();
+
+    // 填寫時間分析 (已完成的問卷)
+    const timeAnalysis = db.prepare(`
+      SELECT 
+        start_time,
+        end_time,
+        (julianday(end_time) - julianday(start_time)) * 24 * 60 as duration_minutes
+      FROM responses 
+      WHERE status = 'completed' 
+        AND start_time IS NOT NULL 
+        AND end_time IS NOT NULL
+      ORDER BY created_at DESC
+    `).all();
+
+    // 設備類型統計
+    const deviceStats = db.prepare(`
+      SELECT 
+        device_type,
+        COUNT(*) as count,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count
+      FROM responses 
+      WHERE device_type IS NOT NULL
+      GROUP BY device_type
+    `).all();
+
+    // 機構統計
+    const orgStats = db.prepare(`
+      SELECT 
+        respondent_org,
+        COUNT(*) as count,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count
+      FROM responses 
+      WHERE respondent_org IS NOT NULL AND respondent_org != ''
+      GROUP BY respondent_org
+      ORDER BY count DESC
+      LIMIT 20
+    `).all();
+
+    // 經驗分布統計
+    const expStats = db.prepare(`
+      SELECT 
+        respondent_exp,
+        COUNT(*) as count
+      FROM responses 
+      WHERE respondent_exp IS NOT NULL AND respondent_exp != ''
+      GROUP BY respondent_exp
+      ORDER BY count DESC
+    `).all();
+
+    // 年齡分布統計
+    const ageStats = db.prepare(`
+      SELECT 
+        respondent_age,
+        COUNT(*) as count
+      FROM responses 
+      WHERE respondent_age IS NOT NULL AND respondent_age != ''
+      GROUP BY respondent_age
+      ORDER BY count DESC
+    `).all();
+
+    // 計算平均填寫時間
+    const avgDuration = timeAnalysis.length > 0 
+      ? timeAnalysis.reduce((sum, item) => sum + (item.duration_minutes || 0), 0) / timeAnalysis.length
+      : 0;
+
+    res.json({
+      success: true,
+      data: {
+        summary: { total, completed, inProgress, avgDuration: Math.round(avgDuration * 100) / 100 },
+        dailyStats,
+        timeAnalysis,
+        deviceStats,
+        orgStats,
+        expStats,
+        ageStats
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // 首頁導向問卷
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'survey.html'));
+});
+
+// 管理員登入頁面
+app.get('/admin/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 // 管理後台

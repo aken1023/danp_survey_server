@@ -6,6 +6,7 @@
     <title>Fuzzy DANP 問卷管理後台</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
         * { font-family: 'Noto Sans TC', sans-serif; }
@@ -26,16 +27,29 @@
                             <p class="text-xs text-slate-500">財報舞弊風險指標專家問卷</p>
                         </div>
                     </div>
-                    <button @click="refreshData" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition">
-                        🔄 重新整理
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <button @click="refreshData" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition">
+                            🔄 重新整理
+                        </button>
+                        <button @click="logout" class="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition">
+                            🚪 登出
+                        </button>
+                    </div>
                 </div>
             </div>
         </nav>
 
-        <div class="max-w-7xl mx-auto px-4 py-6">
-            <!-- 統計卡片 -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <!-- 登入檢查遮罩 -->
+        <div v-if="!authenticated" class="fixed inset-0 bg-white flex items-center justify-center z-50">
+            <div class="text-center">
+                <div class="w-16 h-16 border-4 border-sky-200 border-t-sky-600 rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-slate-600">驗證管理員權限中...</p>
+            </div>
+        </div>
+
+        <div v-else class="max-w-7xl mx-auto px-4 py-6">
+            <!-- 擴展統計卡片 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <div class="bg-white rounded-xl p-6 shadow-sm">
                     <div class="flex items-center justify-between">
                         <div>
@@ -69,22 +83,61 @@
                         </div>
                     </div>
                 </div>
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-slate-500">平均時間</p>
+                            <p class="text-3xl font-bold text-purple-600">{{ analytics.summary?.avgDuration || 0 }}</p>
+                            <p class="text-xs text-slate-400">分鐘</p>
+                        </div>
+                        <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                            <span class="text-2xl">⏱️</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 圖表分析區 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <!-- 每日填寫趨勢 -->
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                    <h3 class="font-bold text-slate-800 mb-4">📈 每日填寫趨勢</h3>
+                    <canvas id="dailyChart" width="400" height="200"></canvas>
+                </div>
+
+                <!-- 設備類型分布 -->
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                    <h3 class="font-bold text-slate-800 mb-4">📱 設備類型分布</h3>
+                    <canvas id="deviceChart" width="400" height="200"></canvas>
+                </div>
+
+                <!-- 填寫時間分析 -->
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                    <h3 class="font-bold text-slate-800 mb-4">⏰ 填寫時間分布</h3>
+                    <canvas id="timeChart" width="400" height="200"></canvas>
+                </div>
+
+                <!-- 機構分布 -->
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                    <h3 class="font-bold text-slate-800 mb-4">🏢 機構分布</h3>
+                    <canvas id="orgChart" width="400" height="200"></canvas>
+                </div>
             </div>
 
             <!-- 匯出按鈕區 -->
             <div class="bg-white rounded-xl p-6 shadow-sm mb-6">
                 <h2 class="font-bold text-slate-800 mb-4">📥 匯出資料</h2>
                 <div class="flex flex-wrap gap-3">
-                    <a href="/api/admin/export/json" 
-                       class="px-6 py-3 bg-sky-600 text-white rounded-lg font-medium hover:bg-sky-700 transition inline-flex items-center gap-2">
+                    <a @click="downloadExport('json')" 
+                       class="px-6 py-3 bg-sky-600 text-white rounded-lg font-medium hover:bg-sky-700 transition inline-flex items-center gap-2 cursor-pointer">
                         📄 匯出完整 JSON
                     </a>
-                    <a href="/api/admin/export/dematel-csv" 
-                       class="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition inline-flex items-center gap-2">
+                    <a @click="downloadExport('dematel-csv')" 
+                       class="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition inline-flex items-center gap-2 cursor-pointer">
                         📊 匯出 DEMATEL CSV
                     </a>
-                    <a href="/api/admin/export/anp-csv" 
-                       class="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition inline-flex items-center gap-2">
+                    <a @click="downloadExport('anp-csv')" 
+                       class="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition inline-flex items-center gap-2 cursor-pointer">
                         📊 匯出 ANP CSV
                     </a>
                 </div>
@@ -221,14 +274,47 @@
 
     createApp({
         setup() {
+            const authenticated = ref(false);
             const stats = ref({ total: 0, completed: 0, inProgress: 0 });
             const responses = ref([]);
             const showDetail = ref(false);
             const detailData = ref(null);
+            const analytics = ref({});
+            
+            // Chart instances
+            let dailyChart, deviceChart, timeChart, orgChart;
+
+            // 檢查認證
+            const checkAuth = () => {
+                const token = localStorage.getItem('admin_token');
+                if (!token || token !== '1102') {
+                    window.location.href = '/admin/login';
+                    return false;
+                }
+                authenticated.value = true;
+                return true;
+            };
+
+            // 登出
+            const logout = () => {
+                localStorage.removeItem('admin_token');
+                window.location.href = '/admin/login';
+            };
+
+            // 取得認證標頭
+            const getAuthHeaders = () => {
+                const token = localStorage.getItem('admin_token');
+                return {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                };
+            };
 
             const fetchStats = async () => {
                 try {
-                    const res = await fetch('/api/admin/stats');
+                    const res = await fetch('/api/admin/stats', {
+                        headers: getAuthHeaders()
+                    });
                     const data = await res.json();
                     if (data.success) stats.value = data.data;
                 } catch (e) { console.error(e); }
@@ -236,15 +322,54 @@
 
             const fetchResponses = async () => {
                 try {
-                    const res = await fetch('/api/admin/responses');
+                    const res = await fetch('/api/admin/responses', {
+                        headers: getAuthHeaders()
+                    });
                     const data = await res.json();
                     if (data.success) responses.value = data.data;
+                } catch (e) { console.error(e); }
+            };
+
+            const fetchAnalytics = async () => {
+                try {
+                    const res = await fetch('/api/admin/analytics', {
+                        headers: getAuthHeaders()
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        analytics.value = data.data;
+                        updateCharts();
+                    }
                 } catch (e) { console.error(e); }
             };
 
             const refreshData = () => {
                 fetchStats();
                 fetchResponses();
+                fetchAnalytics();
+            };
+
+            const downloadExport = async (type) => {
+                try {
+                    const res = await fetch(`/api/admin/export/${type}`, {
+                        headers: getAuthHeaders()
+                    });
+                    
+                    if (res.ok) {
+                        const blob = await res.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `fuzzy_danp_${type}_${new Date().toISOString().slice(0,10)}.${type.includes('csv') ? 'csv' : 'json'}`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                    }
+                } catch (e) { 
+                    console.error(e); 
+                    alert('匯出失敗，請稍後再試');
+                }
             };
 
             const formatOrg = (org) => {
@@ -267,7 +392,9 @@
 
             const viewDetail = async (surveyId) => {
                 try {
-                    const res = await fetch(`/api/admin/response/${surveyId}`);
+                    const res = await fetch(`/api/admin/response/${surveyId}`, {
+                        headers: getAuthHeaders()
+                    });
                     const data = await res.json();
                     if (data.success) {
                         detailData.value = data.data;
@@ -279,9 +406,133 @@
             const deleteResponse = async (surveyId) => {
                 if (!confirm('確定要刪除這份問卷嗎？')) return;
                 try {
-                    await fetch(`/api/admin/response/${surveyId}`, { method: 'DELETE' });
+                    await fetch(`/api/admin/response/${surveyId}`, { 
+                        method: 'DELETE',
+                        headers: getAuthHeaders()
+                    });
                     refreshData();
                 } catch (e) { console.error(e); }
+            };
+
+            // 圖表更新函數
+            const updateCharts = () => {
+                const data = analytics.value;
+                if (!data) return;
+
+                // 每日趨勢圖
+                const dailyLabels = data.dailyStats?.slice(-7).reverse().map(d => d.date) || [];
+                const dailyData = data.dailyStats?.slice(-7).reverse().map(d => d.count) || [];
+                
+                if (dailyChart) dailyChart.destroy();
+                const dailyCtx = document.getElementById('dailyChart');
+                if (dailyCtx) {
+                    dailyChart = new Chart(dailyCtx, {
+                        type: 'line',
+                        data: {
+                            labels: dailyLabels,
+                            datasets: [{
+                                label: '每日填寫數',
+                                data: dailyData,
+                                borderColor: 'rgb(59, 130, 246)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                tension: 0.4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                y: { beginAtZero: true }
+                            }
+                        }
+                    });
+                }
+
+                // 設備類型圓餅圖
+                const deviceLabels = data.deviceStats?.map(d => d.device_type || '未知') || [];
+                const deviceData = data.deviceStats?.map(d => d.count) || [];
+                
+                if (deviceChart) deviceChart.destroy();
+                const deviceCtx = document.getElementById('deviceChart');
+                if (deviceCtx) {
+                    deviceChart = new Chart(deviceCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: deviceLabels,
+                            datasets: [{
+                                data: deviceData,
+                                backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: { position: 'bottom' }
+                            }
+                        }
+                    });
+                }
+
+                // 填寫時間分布直方圖
+                const timeData = data.timeAnalysis || [];
+                const timeBins = [0, 10, 20, 30, 60, 120, 999];
+                const timeLabels = ['<10分', '10-20分', '20-30分', '30-60分', '1-2小時', '>2小時'];
+                const timeCounts = timeBins.slice(0, -1).map((min, i) => {
+                    const max = timeBins[i + 1];
+                    return timeData.filter(t => t.duration_minutes >= min && t.duration_minutes < max).length;
+                });
+
+                if (timeChart) timeChart.destroy();
+                const timeCtx = document.getElementById('timeChart');
+                if (timeCtx) {
+                    timeChart = new Chart(timeCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: timeLabels,
+                            datasets: [{
+                                label: '填寫人數',
+                                data: timeCounts,
+                                backgroundColor: 'rgba(139, 92, 246, 0.8)',
+                                borderColor: 'rgb(139, 92, 246)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                y: { beginAtZero: true }
+                            }
+                        }
+                    });
+                }
+
+                // 機構分布橫條圖
+                const orgLabels = data.orgStats?.slice(0, 8).map(d => formatOrg(d.respondent_org)) || [];
+                const orgData = data.orgStats?.slice(0, 8).map(d => d.count) || [];
+
+                if (orgChart) orgChart.destroy();
+                const orgCtx = document.getElementById('orgChart');
+                if (orgCtx) {
+                    orgChart = new Chart(orgCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: orgLabels,
+                            datasets: [{
+                                label: '填寫人數',
+                                data: orgData,
+                                backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                                borderColor: 'rgb(16, 185, 129)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            indexAxis: 'y',
+                            scales: {
+                                x: { beginAtZero: true }
+                            }
+                        }
+                    });
+                }
             };
 
             const countDematel = computed(() => {
@@ -348,15 +599,18 @@
             };
 
             onMounted(() => {
-                refreshData();
-                // 每 30 秒自動刷新
-                setInterval(refreshData, 30000);
+                if (checkAuth()) {
+                    refreshData();
+                    // 每 30 秒自動刷新
+                    setInterval(refreshData, 30000);
+                }
             });
 
             return {
-                stats, responses, showDetail, detailData,
+                authenticated, analytics, stats, responses, showDetail, detailData,
                 refreshData, formatOrg, formatDate, viewDetail, deleteResponse,
-                countDematel, downloadSingleDematel, downloadSingleANP, downloadSingleJSON
+                countDematel, downloadSingleDematel, downloadSingleANP, downloadSingleJSON,
+                logout, downloadExport
             };
         }
     }).mount('#app');
