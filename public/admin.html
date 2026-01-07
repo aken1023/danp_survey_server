@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuzzy DANP 問卷管理後台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Noto Sans TC', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+    <div id="app">
+        <!-- 頂部導航 -->
+        <nav class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-sky-600 rounded-lg flex items-center justify-center">
+                            <span class="text-white font-bold">FD</span>
+                        </div>
+                        <div>
+                            <h1 class="font-bold text-slate-800">Fuzzy DANP 問卷管理後台</h1>
+                            <p class="text-xs text-slate-500">財報舞弊風險指標專家問卷</p>
+                        </div>
+                    </div>
+                    <button @click="refreshData" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition">
+                        🔄 重新整理
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <div class="max-w-7xl mx-auto px-4 py-6">
+            <!-- 統計卡片 -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-slate-500">總填答數</p>
+                            <p class="text-3xl font-bold text-slate-800">{{ stats.total }}</p>
+                        </div>
+                        <div class="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center">
+                            <span class="text-2xl">📋</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-slate-500">已完成</p>
+                            <p class="text-3xl font-bold text-green-600">{{ stats.completed }}</p>
+                        </div>
+                        <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                            <span class="text-2xl">✅</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-slate-500">填答中</p>
+                            <p class="text-3xl font-bold text-amber-600">{{ stats.inProgress }}</p>
+                        </div>
+                        <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                            <span class="text-2xl">⏳</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 匯出按鈕區 -->
+            <div class="bg-white rounded-xl p-6 shadow-sm mb-6">
+                <h2 class="font-bold text-slate-800 mb-4">📥 匯出資料</h2>
+                <div class="flex flex-wrap gap-3">
+                    <a href="/api/admin/export/json" 
+                       class="px-6 py-3 bg-sky-600 text-white rounded-lg font-medium hover:bg-sky-700 transition inline-flex items-center gap-2">
+                        📄 匯出完整 JSON
+                    </a>
+                    <a href="/api/admin/export/dematel-csv" 
+                       class="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition inline-flex items-center gap-2">
+                        📊 匯出 DEMATEL CSV
+                    </a>
+                    <a href="/api/admin/export/anp-csv" 
+                       class="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition inline-flex items-center gap-2">
+                        📊 匯出 ANP CSV
+                    </a>
+                </div>
+                <p class="text-sm text-slate-500 mt-3">* 僅匯出已完成的問卷</p>
+            </div>
+
+            <!-- 填答列表 -->
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div class="p-6 border-b">
+                    <h2 class="font-bold text-slate-800">📝 填答記錄</h2>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">填答者</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">單位</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">年資</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">裝置</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">狀態</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">更新時間</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr v-if="responses.length === 0">
+                                <td colspan="7" class="px-4 py-8 text-center text-slate-500">
+                                    尚無填答記錄
+                                </td>
+                            </tr>
+                            <tr v-for="r in responses" :key="r.survey_id" class="hover:bg-slate-50">
+                                <td class="px-4 py-4">
+                                    <div class="font-medium text-slate-800">{{ r.respondent_name || '(未填)' }}</div>
+                                    <div class="text-xs text-slate-400">{{ r.survey_id.slice(0, 8) }}...</div>
+                                </td>
+                                <td class="px-4 py-4 text-sm text-slate-600">{{ formatOrg(r.respondent_org) }}</td>
+                                <td class="px-4 py-4 text-sm text-slate-600">{{ r.respondent_exp || '-' }}</td>
+                                <td class="px-4 py-4 text-sm text-slate-600">{{ r.device_type || '-' }}</td>
+                                <td class="px-4 py-4">
+                                    <span :class="[
+                                        'px-2 py-1 rounded-full text-xs font-medium',
+                                        r.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                                    ]">
+                                        {{ r.status === 'completed' ? '已完成' : '填答中' }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-4 text-sm text-slate-500">{{ formatDate(r.updated_at) }}</td>
+                                <td class="px-4 py-4">
+                                    <div class="flex gap-2">
+                                        <button @click="viewDetail(r.survey_id)" 
+                                            class="px-3 py-1 bg-sky-100 text-sky-700 rounded text-sm hover:bg-sky-200 transition">
+                                            查看
+                                        </button>
+                                        <button @click="deleteResponse(r.survey_id)" 
+                                            class="px-3 py-1 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200 transition">
+                                            刪除
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 詳細資料 Modal -->
+        <div v-if="showDetail" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+                <div class="p-6 border-b flex items-center justify-between">
+                    <h3 class="font-bold text-slate-800">填答詳細資料</h3>
+                    <button @click="showDetail = false" class="text-slate-400 hover:text-slate-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="p-6 overflow-y-auto max-h-[70vh]">
+                    <div v-if="detailData">
+                        <!-- 基本資料 -->
+                        <div class="mb-6">
+                            <h4 class="font-bold text-slate-700 mb-3">👤 基本資料</h4>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                                <div><span class="text-slate-500">姓名：</span>{{ detailData.respondent_name }}</div>
+                                <div><span class="text-slate-500">單位：</span>{{ formatOrg(detailData.respondent_org) }}</div>
+                                <div><span class="text-slate-500">年資：</span>{{ detailData.respondent_exp }}</div>
+                                <div><span class="text-slate-500">年齡：</span>{{ detailData.respondent_age || '未提供' }}</div>
+                                <div><span class="text-slate-500">性別：</span>{{ detailData.respondent_gender || '未提供' }}</div>
+                                <div><span class="text-slate-500">裝置：</span>{{ detailData.device_type }}</div>
+                            </div>
+                        </div>
+
+                        <!-- DEMATEL 摘要 -->
+                        <div class="mb-6">
+                            <h4 class="font-bold text-slate-700 mb-3">📊 DEMATEL 資料</h4>
+                            <div class="bg-slate-50 rounded-lg p-4 text-sm">
+                                <p class="text-slate-600 mb-2">影響關係矩陣已記錄 {{ countDematel }} 筆</p>
+                                <button @click="downloadSingleDematel" 
+                                    class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition">
+                                    下載此人 DEMATEL CSV
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- ANP 摘要 -->
+                        <div class="mb-6">
+                            <h4 class="font-bold text-slate-700 mb-3">📊 ANP 資料</h4>
+                            <div class="bg-slate-50 rounded-lg p-4 text-sm">
+                                <p class="text-slate-600 mb-2">構面比較：6 筆 | 指標比較：48 筆</p>
+                                <button @click="downloadSingleANP" 
+                                    class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 transition">
+                                    下載此人 ANP CSV
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 完整 JSON -->
+                        <div>
+                            <h4 class="font-bold text-slate-700 mb-3">📄 完整原始資料</h4>
+                            <button @click="downloadSingleJSON" 
+                                class="px-4 py-2 bg-sky-600 text-white rounded-lg text-sm hover:bg-sky-700 transition">
+                                下載此人完整 JSON
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+        setup() {
+            const stats = ref({ total: 0, completed: 0, inProgress: 0 });
+            const responses = ref([]);
+            const showDetail = ref(false);
+            const detailData = ref(null);
+
+            const fetchStats = async () => {
+                try {
+                    const res = await fetch('/api/admin/stats');
+                    const data = await res.json();
+                    if (data.success) stats.value = data.data;
+                } catch (e) { console.error(e); }
+            };
+
+            const fetchResponses = async () => {
+                try {
+                    const res = await fetch('/api/admin/responses');
+                    const data = await res.json();
+                    if (data.success) responses.value = data.data;
+                } catch (e) { console.error(e); }
+            };
+
+            const refreshData = () => {
+                fetchStats();
+                fetchResponses();
+            };
+
+            const formatOrg = (org) => {
+                const map = {
+                    'big4': '四大會計師事務所',
+                    'other_cpa': '其他會計師事務所',
+                    'listed_company': '上市櫃公司',
+                    'regulator': '主管機關',
+                    'academia': '學術單位',
+                    'other': '其他'
+                };
+                return map[org] || org || '-';
+            };
+
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '-';
+                const d = new Date(dateStr);
+                return d.toLocaleString('zh-TW');
+            };
+
+            const viewDetail = async (surveyId) => {
+                try {
+                    const res = await fetch(`/api/admin/response/${surveyId}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        detailData.value = data.data;
+                        showDetail.value = true;
+                    }
+                } catch (e) { console.error(e); }
+            };
+
+            const deleteResponse = async (surveyId) => {
+                if (!confirm('確定要刪除這份問卷嗎？')) return;
+                try {
+                    await fetch(`/api/admin/response/${surveyId}`, { method: 'DELETE' });
+                    refreshData();
+                } catch (e) { console.error(e); }
+            };
+
+            const countDematel = computed(() => {
+                if (!detailData.value?.dematel_data) return 0;
+                let count = 0;
+                Object.values(detailData.value.dematel_data).forEach(obj => {
+                    count += Object.keys(obj).length;
+                });
+                return count;
+            });
+
+            const downloadSingleDematel = () => {
+                const d = detailData.value;
+                const dematel = d.dematel_data;
+                const criteria = ['A1','A2','A3','B1','B2','B3','C1','C2','C3','D1','D2','D3'];
+                
+                let csv = 'From,To,Value\n';
+                criteria.forEach(from => {
+                    criteria.forEach(to => {
+                        if (from !== to && dematel[from] && dematel[from][to] !== undefined) {
+                            csv += `${from},${to},${dematel[from][to]}\n`;
+                        }
+                    });
+                });
+                
+                downloadFile(csv, `dematel_${d.survey_id}.csv`);
+            };
+
+            const downloadSingleANP = () => {
+                const d = detailData.value;
+                let csv = 'Type,Context,Left,Right,Value\n';
+                
+                const dimPairs = [['A','B'],['A','C'],['A','D'],['B','C'],['B','D'],['C','D']];
+                dimPairs.forEach((pair, i) => {
+                    csv += `Dimension,-,${pair[0]},${pair[1]},${d.anp_dim_data[i] || 5}\n`;
+                });
+                
+                Object.entries(d.anp_criteria_data).forEach(([context, values]) => {
+                    const targetDim = context.split('_')[1];
+                    const criteriaMap = { A: ['A1','A2','A3'], B: ['B1','B2','B3'], C: ['C1','C2','C3'], D: ['D1','D2','D3'] };
+                    const cs = criteriaMap[targetDim];
+                    const pairs = [[cs[0],cs[1]], [cs[0],cs[2]], [cs[1],cs[2]]];
+                    pairs.forEach((pair, i) => {
+                        csv += `Criteria,${context},${pair[0]},${pair[1]},${values[i] || 5}\n`;
+                    });
+                });
+                
+                downloadFile(csv, `anp_${d.survey_id}.csv`);
+            };
+
+            const downloadSingleJSON = () => {
+                const d = detailData.value;
+                downloadFile(JSON.stringify(d.raw_json, null, 2), `full_${d.survey_id}.json`);
+            };
+
+            const downloadFile = (content, filename) => {
+                const blob = new Blob(['\uFEFF' + content], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            onMounted(() => {
+                refreshData();
+                // 每 30 秒自動刷新
+                setInterval(refreshData, 30000);
+            });
+
+            return {
+                stats, responses, showDetail, detailData,
+                refreshData, formatOrg, formatDate, viewDetail, deleteResponse,
+                countDematel, downloadSingleDematel, downloadSingleANP, downloadSingleJSON
+            };
+        }
+    }).mount('#app');
+    </script>
+</body>
+</html>

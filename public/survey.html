@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>財報舞弊風險指標專家問卷 - Fuzzy DANP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Noto Sans TC', sans-serif; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        .btn-option { transition: all 0.2s ease; }
+        .btn-option:hover { transform: translateY(-2px); }
+        .btn-option.selected { transform: scale(1.05); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .progress-ring { transition: stroke-dashoffset 0.5s ease; }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+        @media (max-width: 640px) {
+            .mobile-stack { flex-direction: column; }
+            .mobile-full { width: 100%; }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-sky-50 min-h-screen">
+    <div id="app">
+        <!-- 載入畫面 -->
+        <div v-if="loading" class="fixed inset-0 bg-white flex items-center justify-center z-50">
+            <div class="text-center">
+                <div class="w-16 h-16 border-4 border-sky-200 border-t-sky-600 rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-slate-600">載入中...</p>
+            </div>
+        </div>
+
+        <!-- 主容器 -->
+        <div v-else class="max-w-4xl mx-auto px-4 py-6 sm:py-8">
+            
+            <!-- 頂部進度區 -->
+            <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 mb-6 sticky top-2 z-40">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3 sm:gap-4">
+                        <div class="relative w-14 h-14 sm:w-16 sm:h-16">
+                            <svg class="w-14 h-14 sm:w-16 sm:h-16 transform -rotate-90">
+                                <circle cx="50%" cy="50%" r="24" stroke="#e2e8f0" stroke-width="5" fill="none"/>
+                                <circle cx="50%" cy="50%" r="24" stroke="#0284c7" stroke-width="5" fill="none"
+                                    :stroke-dasharray="150" 
+                                    :stroke-dashoffset="150 - (150 * overallProgress / 100)"
+                                    class="progress-ring"/>
+                            </svg>
+                            <span class="absolute inset-0 flex items-center justify-center text-xs sm:text-sm font-bold text-sky-600">
+                                {{ Math.round(overallProgress) }}%
+                            </span>
+                        </div>
+                        <div>
+                            <h2 class="font-bold text-slate-800 text-sm sm:text-base">{{ stages[currentStage].title }}</h2>
+                            <p class="text-xs sm:text-sm text-slate-500">{{ stages[currentStage].subtitle }}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xs sm:text-sm text-slate-500">預估剩餘</p>
+                        <p class="text-base sm:text-lg font-bold text-sky-600">{{ estimatedTime }} 分鐘</p>
+                    </div>
+                </div>
+                
+                <!-- 階段指示器 - 手機版簡化 -->
+                <div class="hidden sm:flex items-center justify-between">
+                    <template v-for="(stage, index) in stages" :key="index">
+                        <div class="flex items-center">
+                            <div :class="[
+                                'w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold transition-all',
+                                index < currentStage ? 'bg-green-500 text-white' :
+                                index === currentStage ? 'bg-sky-600 text-white ring-4 ring-sky-200' :
+                                'bg-slate-200 text-slate-500'
+                            ]">
+                                <span v-if="index < currentStage">✓</span>
+                                <span v-else>{{ index + 1 }}</span>
+                            </div>
+                            <span class="ml-2 text-xs hidden lg:inline" :class="index === currentStage ? 'text-sky-600 font-medium' : 'text-slate-400'">
+                                {{ stage.short }}
+                            </span>
+                        </div>
+                        <div v-if="index < stages.length - 1" class="flex-1 h-1 mx-2 rounded" :class="index < currentStage ? 'bg-green-500' : 'bg-slate-200'"></div>
+                    </template>
+                </div>
+                <!-- 手機版進度條 -->
+                <div class="sm:hidden">
+                    <div class="flex justify-between text-xs text-slate-500 mb-1">
+                        <span>階段 {{ currentStage + 1 }} / {{ stages.length }}</span>
+                        <span>{{ stages[currentStage].short }}</span>
+                    </div>
+                    <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div class="h-full bg-sky-500 transition-all" :style="{width: ((currentStage + 1) / stages.length * 100) + '%'}"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== Stage 0: 歡迎頁 ==================== -->
+            <transition name="fade" mode="out-in">
+                <div v-if="currentStage === 0" key="welcome" class="bg-white rounded-2xl shadow-lg p-6 sm:p-8">
+                    <div class="text-center mb-8">
+                        <div class="w-20 h-20 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-10 h-10 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                        </div>
+                        <h1 class="text-xl sm:text-2xl font-bold text-slate-800 mb-2">財報舞弊風險評估指標</h1>
+                        <h2 class="text-lg sm:text-xl text-sky-600 mb-4">專家問卷調查</h2>
+                        <p class="text-slate-600 max-w-lg mx-auto text-sm sm:text-base">
+                            感謝您撥冗參與本研究。本問卷旨在蒐集專家意見，建立財報舞弊風險評估指標的權重體系。
+                        </p>
+                    </div>
+
+                    <!-- 🔒 隱私聲明 -->
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 sm:p-5 mb-6">
+                        <div class="flex items-start gap-3">
+                            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-blue-800 mb-1">🔒 資料使用聲明</h4>
+                                <p class="text-sm text-blue-700">
+                                    本問卷<strong>僅供研究之系統建構使用</strong>，所蒐集之資料將以匿名方式進行統計分析，
+                                    <strong>不會揭露任何可識別個人身分之資訊</strong>。您的回答將用於計算財報舞弊風險指標的權重，
+                                    研究成果將以彙總形式呈現。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ⏰ 時間說明 -->
+                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-5 mb-6">
+                        <div class="flex items-start gap-3">
+                            <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span class="text-xl">⏰</span>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-amber-800 mb-1">填答時間說明</h4>
+                                <p class="text-sm text-amber-700">
+                                    本問卷採用完整的 <strong>Fuzzy DANP 方法</strong>，包含影響關係評估與重要性比較兩大部分，
+                                    預估需要 <strong>40-50 分鐘</strong> 完成。問卷具有<strong>自動儲存功能</strong>，
+                                    您可隨時暫停，下次開啟時將自動接續上次進度。
+                                </p>
+                                <p class="text-sm text-amber-700 mt-2">
+                                    🙏 <strong>衷心感謝您寶貴的時間與專業意見，您的協助對本研究至關重要！</strong>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 rounded-xl p-4 sm:p-6 mb-6">
+                        <h3 class="font-bold text-slate-800 mb-4">📋 問卷結構</h3>
+                        <div class="space-y-3 text-sm text-slate-600">
+                            <div class="flex items-start gap-3">
+                                <span class="w-6 h-6 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold">1</span>
+                                <div>
+                                    <strong>影響關係評估（DEMATEL）</strong>
+                                    <p class="text-slate-500">評估 12 項指標間的相互影響程度，共 132 題</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="w-6 h-6 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold">2</span>
+                                <div>
+                                    <strong>構面重要性比較（ANP）</strong>
+                                    <p class="text-slate-500">比較 4 個構面的相對重要性，共 6 題</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="w-6 h-6 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold">3</span>
+                                <div>
+                                    <strong>指標重要性比較（ANP 含相依性）</strong>
+                                    <p class="text-slate-500">在不同構面影響下，比較指標的相對重要性，共 48 題</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 研究架構 -->
+                    <div class="bg-slate-50 rounded-xl p-4 sm:p-6 mb-6">
+                        <h3 class="font-bold text-slate-800 mb-3">📊 研究架構：舞弊三角論 + 文本訊號</h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 text-sm">
+                            <div class="bg-white rounded-lg p-3 text-center">
+                                <div class="text-2xl mb-1">💰</div>
+                                <div class="font-medium text-slate-700">構面 A</div>
+                                <div class="text-slate-500 text-xs">壓力/動機</div>
+                            </div>
+                            <div class="bg-white rounded-lg p-3 text-center">
+                                <div class="text-2xl mb-1">🚪</div>
+                                <div class="font-medium text-slate-700">構面 B</div>
+                                <div class="text-slate-500 text-xs">機會</div>
+                            </div>
+                            <div class="bg-white rounded-lg p-3 text-center">
+                                <div class="text-2xl mb-1">🎭</div>
+                                <div class="font-medium text-slate-700">構面 C</div>
+                                <div class="text-slate-500 text-xs">態度/藉口</div>
+                            </div>
+                            <div class="bg-white rounded-lg p-3 text-center">
+                                <div class="text-2xl mb-1">📝</div>
+                                <div class="font-medium text-slate-700">構面 D</div>
+                                <div class="text-slate-500 text-xs">文本訊號</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 基本資料 -->
+                    <div class="border-t pt-6">
+                        <h3 class="font-bold text-slate-800 mb-4">👤 基本資料</h3>
+                        
+                        <div class="grid sm:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">
+                                    姓名 / 代號 <span class="text-red-500">*</span>
+                                </label>
+                                <input v-model="respondent.name" type="text" 
+                                    class="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-transparent transition"
+                                    placeholder="可使用代號保持匿名">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">
+                                    服務單位類型 <span class="text-red-500">*</span>
+                                </label>
+                                <select v-model="respondent.organization" 
+                                    class="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-transparent transition">
+                                    <option value="">請選擇</option>
+                                    <option value="big4">四大會計師事務所</option>
+                                    <option value="other_cpa">其他會計師事務所</option>
+                                    <option value="listed_company">上市櫃公司財務部門</option>
+                                    <option value="regulator">主管機關</option>
+                                    <option value="academia">學術單位</option>
+                                    <option value="other">其他</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">
+                                    經驗年資 <span class="text-red-500">*</span>
+                                </label>
+                                <select v-model="respondent.experience" 
+                                    class="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-transparent transition">
+                                    <option value="">請選擇</option>
+                                    <option value="5-10">5-10 年</option>
+                                    <option value="10-15">10-15 年</option>
+                                    <option value="15-20">15-20 年</option>
+                                    <option value="20+">20 年以上</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">
+                                    年齡 <span class="text-slate-400 text-xs">（選填）</span>
+                                </label>
+                                <select v-model="respondent.age" 
+                                    class="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-transparent transition">
+                                    <option value="">不提供</option>
+                                    <option value="30-39">30-39 歲</option>
+                                    <option value="40-49">40-49 歲</option>
+                                    <option value="50-59">50-59 歲</option>
+                                    <option value="60+">60 歲以上</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">
+                                    性別 <span class="text-slate-400 text-xs">（選填）</span>
+                                </label>
+                                <select v-model="respondent.gender" 
+                                    class="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-transparent transition">
+                                    <option value="">不提供</option>
+                                    <option value="male">男</option>
+                                    <option value="female">女</option>
+                                    <option value="other">其他</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">
+                                    填答裝置
+                                </label>
+                                <input type="text" :value="deviceType" disabled
+                                    class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-500">
+                            </div>
+                        </div>
+
+                        <p class="text-xs text-slate-400 mt-2">
+                            <span class="text-red-500">*</span> 為必填欄位
+                        </p>
+                    </div>
+
+                    <div class="mt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <button v-if="hasSavedProgress" @click="clearProgress" 
+                            class="text-sm text-slate-400 hover:text-red-500 transition-all underline order-2 sm:order-1">
+                            🗑️ 清除舊進度，重新開始
+                        </button>
+                        <div v-else class="order-2 sm:order-1"></div>
+                        <button @click="startSurvey" 
+                            :disabled="!canStart"
+                            :class="[
+                                'w-full sm:w-auto px-8 py-4 rounded-xl font-bold text-lg transition-all order-1 sm:order-2',
+                                canStart 
+                                    ? 'bg-sky-600 text-white hover:bg-sky-700 hover:shadow-lg' 
+                                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            ]">
+                            {{ hasSavedProgress ? '繼續填答 →' : '開始填答 →' }}
+                        </button>
+                    </div>
+
+                    <div v-if="hasSavedProgress" class="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+                        💡 偵測到您有未完成的填答進度（{{ savedProgressPercent }}%），點擊「繼續填答」可接續上次進度。
+                    </div>
+                </div>
+            </transition>
+
+            <!-- ==================== Stage 1: DEMATEL ==================== -->
+            <transition name="fade" mode="out-in">
+                <div v-if="currentStage === 1" key="dematel" class="bg-white rounded-2xl shadow-lg p-6 sm:p-8">
+                    <div class="mb-6">
+                        <h2 class="text-lg sm:text-xl font-bold text-slate-800 mb-2">第一部分：影響關係評估（DEMATEL）</h2>
+                        <p class="text-sm sm:text-base text-slate-600">
+                            請評估「<span class="text-sky-600 font-medium">{{ currentFromCriteria.name }}</span>」
+                            對其他各項指標的影響程度
+                        </p>
+                    </div>
+
+                    <!-- 當前評估的指標 -->
+                    <div class="bg-gradient-to-r from-sky-50 to-blue-50 rounded-xl p-4 sm:p-5 mb-4">
+                        <p class="text-xs text-slate-500 mb-1">{{ currentFromCriteria.description }}</p>
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 sm:w-14 sm:h-14 bg-sky-600 text-white rounded-xl flex items-center justify-center font-bold text-lg sm:text-xl flex-shrink-0">
+                                {{ currentFromCriteria.id }}
+                            </div>
+                            <h3 class="font-bold text-slate-800 text-base sm:text-lg">{{ currentFromCriteria.name }}</h3>
+                        </div>
+                    </div>
+
+                    <!-- 語意量表說明 -->
+                    <div class="bg-slate-50 rounded-lg p-3 mb-4">
+                        <p class="text-xs text-slate-600 text-center">
+                            <strong>語意量表：</strong>
+                            無影響(0) → 低度(1) → 中度(2) → 高度(3) → 極高(4)
+                        </p>
+                    </div>
+
+                    <!-- 進度 -->
+                    <div class="mb-4">
+                        <div class="flex justify-between text-xs sm:text-sm text-slate-500 mb-2">
+                            <span>評估指標 {{ dematelFromIndex + 1 }} / {{ criteria.length }}</span>
+                            <span>DEMATEL 整體 {{ Math.round(dematelProgress) }}%</span>
+                        </div>
+                        <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div class="h-full bg-sky-500 transition-all" :style="{width: dematelProgress + '%'}"></div>
+                        </div>
+                    </div>
+
+                    <!-- 填答區 - 卡片式 -->
+                    <div class="space-y-3">
+                        <template v-for="toCriteria in otherCriteria" :key="toCriteria.id">
+                            <div class="border border-slate-200 rounded-xl p-4 card-hover">
+                                <div class="mb-3">
+                                    <p class="text-xs text-slate-400 mb-1">{{ toCriteria.description }}</p>
+                                    <p class="text-sm sm:text-base text-slate-800">
+                                        <span class="font-bold text-sky-600">{{ currentFromCriteria.id }}</span>
+                                        → 對「<strong class="text-amber-600">{{ toCriteria.name }}</strong>」的影響程度？
+                                    </p>
+                                </div>
+                                
+                                <!-- 五點語意按鈕 -->
+                                <div class="grid grid-cols-5 gap-1 sm:gap-2">
+                                    <button v-for="level in fuzzyLevels" :key="level.value"
+                                        @click="setDematelAnswer(currentFromCriteria.id, toCriteria.id, level.value)"
+                                        :class="[
+                                            'btn-option py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium border-2 transition-all',
+                                            dematelAnswers[currentFromCriteria.id][toCriteria.id] === level.value
+                                                ? level.selectedClass
+                                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                        ]">
+                                        <div class="font-bold">{{ level.value }}</div>
+                                        <div class="text-xs hidden sm:block">{{ level.label }}</div>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- 導航 -->
+                    <div class="mt-6 flex justify-between">
+                        <button @click="prevDematel" 
+                            :disabled="dematelFromIndex === 0"
+                            :class="[
+                                'px-4 sm:px-6 py-3 rounded-xl font-medium transition-all text-sm sm:text-base',
+                                dematelFromIndex === 0 
+                                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            ]">
+                            ← 上一組
+                        </button>
+                        <button @click="nextDematel" 
+                            class="px-4 sm:px-6 py-3 bg-sky-600 text-white rounded-xl font-medium hover:bg-sky-700 transition-all text-sm sm:text-base">
+                            {{ dematelFromIndex === criteria.length - 1 ? '進入下一階段 →' : '下一組 →' }}
+                        </button>
+                    </div>
+                </div>
+            </transition>
+
+            <!-- ==================== Stage 2: ANP 構面比較 ==================== -->
+            <transition name="fade" mode="out-in">
+                <div v-if="currentStage === 2" key="anp-dim" class="bg-white rounded-2xl shadow-lg p-6 sm:p-8">
+                    <div class="mb-6">
+                        <h2 class="text-lg sm:text-xl font-bold text-slate-800 mb-2">第二部分：構面重要性比較（ANP）</h2>
+                        <p class="text-sm sm:text-base text-slate-600">
+                            在偵測財報舞弊時，請比較以下兩個構面的相對重要性
+                        </p>
+                    </div>
+
+                    <!-- 進度 -->
+                    <div class="mb-6">
+                        <div class="flex justify-between text-xs sm:text-sm text-slate-500 mb-2">
+                            <span>比較 {{ anpDimIndex + 1 }} / {{ dimensionPairs.length }}</span>
+                        </div>
+                        <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div class="h-full bg-sky-500 transition-all" :style="{width: ((anpDimIndex + 1) / dimensionPairs.length * 100) + '%'}"></div>
+                        </div>
+                    </div>
+
+                    <!-- 比較卡片 -->
+                    <div class="grid sm:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-sky-50 border-2 border-sky-200 rounded-xl p-4 sm:p-5">
+                            <p class="text-xs text-slate-500 mb-2">{{ currentDimPair.left.description }}</p>
+                            <div class="flex items-center gap-3">
+                                <div class="text-3xl">{{ currentDimPair.left.emoji }}</div>
+                                <div>
+                                    <div class="text-xs text-slate-500">構面 {{ currentDimPair.left.id }}</div>
+                                    <div class="font-bold text-slate-800">{{ currentDimPair.left.name }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 sm:p-5">
+                            <p class="text-xs text-slate-500 mb-2">{{ currentDimPair.right.description }}</p>
+                            <div class="flex items-center gap-3">
+                                <div class="text-3xl">{{ currentDimPair.right.emoji }}</div>
+                                <div>
+                                    <div class="text-xs text-slate-500">構面 {{ currentDimPair.right.id }}</div>
+                                    <div class="font-bold text-slate-800">{{ currentDimPair.right.name }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ANP 九點量表 -->
+                    <div class="mb-4">
+                        <div class="flex justify-between text-xs sm:text-sm mb-2">
+                            <span class="text-sky-600 font-medium">← {{ currentDimPair.left.name }}</span>
+                            <span class="text-slate-400">同等</span>
+                            <span class="text-amber-600 font-medium">{{ currentDimPair.right.name }} →</span>
+                        </div>
+                        <div class="grid grid-cols-9 gap-1">
+                            <button v-for="val in 9" :key="val"
+                                @click="anpDimAnswers[anpDimIndex] = val"
+                                :class="[
+                                    'py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-bold border-2 transition-all',
+                                    anpDimAnswers[anpDimIndex] === val
+                                        ? (val < 5 ? 'bg-sky-500 border-sky-500 text-white' : val > 5 ? 'bg-amber-500 border-amber-500 text-white' : 'bg-slate-600 border-slate-600 text-white')
+                                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                ]">
+                                {{ anpScaleLabels[val - 1] }}
+                            </button>
+                        </div>
+                        <div class="flex justify-between text-xs text-slate-400 mt-1 px-1">
+                            <span>極端</span>
+                            <span>非常</span>
+                            <span>明顯</span>
+                            <span>稍微</span>
+                            <span>1:1</span>
+                            <span>稍微</span>
+                            <span>明顯</span>
+                            <span>非常</span>
+                            <span>極端</span>
+                        </div>
+                    </div>
+
+                    <!-- 選擇結果 -->
+                    <div class="text-center mb-6">
+                        <div class="inline-block px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">
+                            {{ anpDimResultText }}
+                        </div>
+                    </div>
+
+                    <!-- 導航 -->
+                    <div class="flex justify-between">
+                        <button @click="anpDimIndex > 0 ? anpDimIndex-- : null" 
+                            :disabled="anpDimIndex === 0"
+                            :class="['px-4 sm:px-6 py-3 rounded-xl font-medium transition-all text-sm sm:text-base', anpDimIndex === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200']">
+                            ← 上一題
+                        </button>
+                        <button @click="nextAnpDim" 
+                            class="px-4 sm:px-6 py-3 bg-sky-600 text-white rounded-xl font-medium hover:bg-sky-700 transition-all text-sm sm:text-base">
+                            {{ anpDimIndex === dimensionPairs.length - 1 ? '進入下一階段 →' : '下一題 →' }}
+                        </button>
+                    </div>
+                </div>
+            </transition>
+
+            <!-- ==================== Stage 3: ANP 指標比較（含相依性） ==================== -->
+            <transition name="fade" mode="out-in">
+                <div v-if="currentStage === 3" key="anp-criteria" class="bg-white rounded-2xl shadow-lg p-6 sm:p-8">
+                    <div class="mb-6">
+                        <h2 class="text-lg sm:text-xl font-bold text-slate-800 mb-2">第三部分：指標重要性比較（ANP 含相依性）</h2>
+                        <p class="text-sm sm:text-base text-slate-600">
+                            在考量「<span class="font-medium">{{ currentInfluenceDim.emoji }} {{ currentInfluenceDim.name }}</span>」構面的影響下，
+                            請比較「<span class="text-sky-600 font-medium">{{ currentTargetDim.name }}</span>」構面內各指標的相對重要性
+                        </p>
+                    </div>
+
+                    <!-- 情境說明 -->
+                    <div class="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-4 mb-4">
+                        <p class="text-sm text-purple-800">
+                            <strong>情境：</strong>當「{{ currentInfluenceDim.name }}」對企業產生影響時，
+                            在「{{ currentTargetDim.name }}」構面中，以下哪個指標更能反映舞弊風險？
+                        </p>
+                    </div>
+
+                    <!-- 進度 -->
+                    <div class="mb-4">
+                        <div class="flex justify-between text-xs sm:text-sm text-slate-500 mb-2">
+                            <span>情境 {{ anpCriteriaContextIndex + 1 }}/16，比較 {{ anpCriteriaPairIndex + 1 }}/3</span>
+                            <span>ANP 指標 {{ Math.round(anpCriteriaProgress) }}%</span>
+                        </div>
+                        <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div class="h-full bg-sky-500 transition-all" :style="{width: anpCriteriaProgress + '%'}"></div>
+                        </div>
+                    </div>
+
+                    <!-- 比較的兩個指標 -->
+                    <div class="grid sm:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-sky-50 border-2 border-sky-200 rounded-xl p-4">
+                            <p class="text-xs text-slate-500 mb-2">{{ currentCriteriaPair.left.description }}</p>
+                            <div class="flex items-center gap-2">
+                                <span class="w-10 h-10 bg-sky-600 text-white rounded-lg flex items-center justify-center font-bold">
+                                    {{ currentCriteriaPair.left.id }}
+                                </span>
+                                <span class="font-bold text-slate-800">{{ currentCriteriaPair.left.name }}</span>
+                            </div>
+                        </div>
+                        <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
+                            <p class="text-xs text-slate-500 mb-2">{{ currentCriteriaPair.right.description }}</p>
+                            <div class="flex items-center gap-2">
+                                <span class="w-10 h-10 bg-amber-600 text-white rounded-lg flex items-center justify-center font-bold">
+                                    {{ currentCriteriaPair.right.id }}
+                                </span>
+                                <span class="font-bold text-slate-800">{{ currentCriteriaPair.right.name }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ANP 九點量表 -->
+                    <div class="mb-4">
+                        <div class="flex justify-between text-xs sm:text-sm mb-2">
+                            <span class="text-sky-600 font-medium">← {{ currentCriteriaPair.left.id }}</span>
+                            <span class="text-slate-400">同等</span>
+                            <span class="text-amber-600 font-medium">{{ currentCriteriaPair.right.id }} →</span>
+                        </div>
+                        <div class="grid grid-cols-9 gap-1">
+                            <button v-for="val in 9" :key="val"
+                                @click="setAnpCriteriaAnswer(val)"
+                                :class="[
+                                    'py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-bold border-2 transition-all',
+                                    currentAnpCriteriaAnswer === val
+                                        ? (val < 5 ? 'bg-sky-500 border-sky-500 text-white' : val > 5 ? 'bg-amber-500 border-amber-500 text-white' : 'bg-slate-600 border-slate-600 text-white')
+                                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                ]">
+                                {{ anpScaleLabels[val - 1] }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 選擇結果 -->
+                    <div class="text-center mb-6">
+                        <div class="inline-block px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">
+                            {{ anpCriteriaResultText }}
+                        </div>
+                    </div>
+
+                    <!-- 導航 -->
+                    <div class="flex justify-between">
+                        <button @click="prevAnpCriteria" 
+                            :disabled="anpCriteriaContextIndex === 0 && anpCriteriaPairIndex === 0"
+                            :class="['px-4 sm:px-6 py-3 rounded-xl font-medium transition-all text-sm sm:text-base', 
+                                (anpCriteriaContextIndex === 0 && anpCriteriaPairIndex === 0) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200']">
+                            ← 上一題
+                        </button>
+                        <button @click="nextAnpCriteria" 
+                            :disabled="submitting"
+                            class="px-4 sm:px-6 py-3 bg-sky-600 text-white rounded-xl font-medium hover:bg-sky-700 transition-all text-sm sm:text-base disabled:bg-slate-400">
+                            <span v-if="submitting">提交中...</span>
+                            <span v-else>{{ isLastAnpCriteria ? '完成問卷 →' : '下一題 →' }}</span>
+                        </button>
+                    </div>
+                </div>
+            </transition>
+
+            <!-- ==================== Stage 4: 完成頁 ==================== -->
+            <transition name="fade" mode="out-in">
+                <div v-if="currentStage === 4" key="complete" class="bg-white rounded-2xl shadow-lg p-6 sm:p-8">
+                    <div class="text-center mb-8">
+                        <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+                        <h1 class="text-xl sm:text-2xl font-bold text-slate-800 mb-2">🎉 感謝您完成問卷！</h1>
+                        <p class="text-slate-600">您的專業意見對本研究極為寶貴，衷心感謝您的協助！</p>
+                    </div>
+
+                    <!-- 填答統計 -->
+                    <div class="bg-slate-50 rounded-xl p-6 mb-6">
+                        <h3 class="font-bold text-slate-800 mb-4">📊 填答資訊</h3>
+                        <div class="grid grid-cols-2 gap-4 text-center">
+                            <div>
+                                <div class="text-2xl font-bold text-green-600">{{ elapsedTimeText }}</div>
+                                <div class="text-sm text-slate-500">填答時間</div>
+                            </div>
+                            <div>
+                                <div class="text-2xl font-bold text-amber-600">{{ surveyId.slice(0, 8) }}</div>
+                                <div class="text-sm text-slate-500">問卷編號</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 提交成功訊息 -->
+                    <div class="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
+                        <div class="flex items-start gap-3">
+                            <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span class="text-xl">✅</span>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-green-800 mb-1">您的回答已成功送出！</h4>
+                                <p class="text-sm text-green-700">
+                                    感謝您完成本問卷，您的專業意見已安全儲存。研究團隊將彙整所有專家意見後進行分析。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fuzzy 轉換說明 -->
+                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+                        <h4 class="font-bold text-amber-800 mb-2">📝 Fuzzy 三角模糊數對照表（供參考）</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                            <div class="bg-white rounded p-2 text-center">
+                                <div class="font-bold">0 無影響</div>
+                                <div class="text-slate-500">(0, 0, 0.25)</div>
+                            </div>
+                            <div class="bg-white rounded p-2 text-center">
+                                <div class="font-bold">1 低度</div>
+                                <div class="text-slate-500">(0, 0.25, 0.5)</div>
+                            </div>
+                            <div class="bg-white rounded p-2 text-center">
+                                <div class="font-bold">2 中度</div>
+                                <div class="text-slate-500">(0.25, 0.5, 0.75)</div>
+                            </div>
+                            <div class="bg-white rounded p-2 text-center">
+                                <div class="font-bold">3 高度</div>
+                                <div class="text-slate-500">(0.5, 0.75, 1)</div>
+                            </div>
+                            <div class="bg-white rounded p-2 text-center">
+                                <div class="font-bold">4 極高</div>
+                                <div class="text-slate-500">(0.75, 1, 1)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </transition>
+
+        </div>
+
+        <!-- 自動儲存提示 -->
+        <div v-if="showSaveToast" 
+            class="fixed bottom-4 right-4 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-50 text-sm">
+            <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            已自動儲存
+        </div>
+    </div>
+
+    <script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+        setup() {
+            // ===== 基本狀態 =====
+            const loading = ref(true);
+            const currentStage = ref(0);
+            const showSaveToast = ref(false);
+            const hasSavedProgress = ref(false);
+            const savedProgressPercent = ref(0);
+            const submitting = ref(false);
+
+            // 唯一識別碼與時間
+            const surveyId = ref('');
+            const startTime = ref(null);
+            const endTime = ref(null);
+
+            // 裝置偵測
+            const deviceType = computed(() => {
+                const ua = navigator.userAgent;
+                if (/tablet|ipad|playbook|silk/i.test(ua)) return '平板';
+                if (/mobile|iphone|ipod|android|blackberry|opera mini|iemobile/i.test(ua)) return '手機';
+                return '電腦';
+            });
+
+            // ===== 受訪者資料 =====
+            const respondent = ref({
+                name: '', organization: '', experience: '', age: '', gender: ''
+            });
+
+            // ===== 構面與指標定義 =====
+            const dimensions = [
+                { id: 'A', name: '壓力/動機', emoji: '💰', description: '「壓力/動機」是指管理層面臨的財務壓力與達成目標的誘因。' },
+                { id: 'B', name: '機會', emoji: '🚪', description: '「機會」是指內控缺失或組織特性創造的舞弊機會。' },
+                { id: 'C', name: '態度/藉口', emoji: '🎭', description: '「態度/藉口」是指管理層合理化不當行為的心態與藉口。' },
+                { id: 'D', name: '文本訊號', emoji: '📝', description: '「文本訊號」是指年報文本中可能隱藏的異常訊號。' }
+            ];
+
+            const criteria = [
+                { id: 'A1', dimension: 'A', name: '財務困境', description: '「財務困境」是指公司面臨的財務壓力程度，如 Z-score、流動比率、負債比率等。' },
+                { id: 'A2', dimension: 'A', name: '盈利壓力', description: '「盈利壓力」是指達成盈利目標的壓力，如是否勉強達到分析師預測。' },
+                { id: 'A3', dimension: 'A', name: '薪酬結構', description: '「薪酬結構」是指管理層薪酬與股價或績效的連結程度。' },
+                { id: 'B1', dimension: 'B', name: '關係人交易', description: '「關係人交易」是指關係人交易的金額、頻率與性質。' },
+                { id: 'B2', dimension: 'B', name: '內控缺失', description: '「內控缺失」是指內部控制制度的有效性與重大缺失。' },
+                { id: 'B3', dimension: 'B', name: '複雜結構', description: '「複雜結構」是指組織架構的複雜程度，如多層子公司、海外實體等。' },
+                { id: 'C1', dimension: 'C', name: '審計更換', description: '「審計更換」是指更換審計師的頻率與原因。' },
+                { id: 'C2', dimension: 'C', name: '重編紀錄', description: '「重編紀錄」是指歷史財報重編的次數與性質。' },
+                { id: 'C3', dimension: 'C', name: '管理層誠信', description: '「管理層誠信」是指管理層的誠信紀錄與裁罰歷史。' },
+                { id: 'D1', dimension: 'D', name: '語言模糊性', description: '「語言模糊性」是指年報文本的模糊程度與模糊詞彙使用頻率。' },
+                { id: 'D2', dimension: 'D', name: '情緒異常', description: '「情緒異常」是指文本情緒與財務表現的不一致程度。' },
+                { id: 'D3', dimension: 'D', name: '複雜句型', description: '「複雜句型」是指文本句型的複雜度與可讀性。' }
+            ];
+
+            const stages = [
+                { title: '歡迎', subtitle: '問卷說明', short: '開始' },
+                { title: 'DEMATEL', subtitle: '影響關係評估', short: 'DEMATEL' },
+                { title: 'ANP 構面', subtitle: '構面重要性', short: '構面' },
+                { title: 'ANP 指標', subtitle: '指標重要性（含相依性）', short: '指標' },
+                { title: '完成', subtitle: '感謝您', short: '完成' }
+            ];
+
+            // Fuzzy 語意量表
+            const fuzzyLevels = [
+                { value: 0, label: '無影響', tfn: [0, 0, 0.25], selectedClass: 'bg-slate-500 border-slate-500 text-white selected' },
+                { value: 1, label: '低度', tfn: [0, 0.25, 0.5], selectedClass: 'bg-green-500 border-green-500 text-white selected' },
+                { value: 2, label: '中度', tfn: [0.25, 0.5, 0.75], selectedClass: 'bg-yellow-500 border-yellow-500 text-white selected' },
+                { value: 3, label: '高度', tfn: [0.5, 0.75, 1], selectedClass: 'bg-orange-500 border-orange-500 text-white selected' },
+                { value: 4, label: '極高', tfn: [0.75, 1, 1], selectedClass: 'bg-red-500 border-red-500 text-white selected' }
+            ];
+
+            const anpScaleLabels = ['9', '7', '5', '3', '1', '3', '5', '7', '9'];
+
+            // ===== DEMATEL =====
+            const dematelFromIndex = ref(0);
+            const dematelAnswers = ref({});
+
+            const initDematel = () => {
+                criteria.forEach(from => {
+                    dematelAnswers.value[from.id] = {};
+                    criteria.forEach(to => {
+                        if (from.id !== to.id) {
+                            dematelAnswers.value[from.id][to.id] = 2; // 預設中度
+                        }
+                    });
+                });
+            };
+
+            const currentFromCriteria = computed(() => criteria[dematelFromIndex.value]);
+            const otherCriteria = computed(() => criteria.filter(c => c.id !== currentFromCriteria.value.id));
+            const dematelProgress = computed(() => ((dematelFromIndex.value + 1) / criteria.length) * 100);
+
+            const setDematelAnswer = (from, to, value) => {
+                dematelAnswers.value[from][to] = value;
+                autoSave();
+            };
+
+            const prevDematel = () => { if (dematelFromIndex.value > 0) dematelFromIndex.value--; };
+            const nextDematel = () => {
+                if (dematelFromIndex.value < criteria.length - 1) {
+                    dematelFromIndex.value++;
+                } else {
+                    currentStage.value = 2;
+                }
+                autoSave();
+            };
+
+            // ===== ANP 構面比較 =====
+            const anpDimIndex = ref(0);
+            const anpDimAnswers = ref([5, 5, 5, 5, 5, 5]); // 預設同等重要
+
+            const dimensionPairs = [
+                { left: dimensions[0], right: dimensions[1] },
+                { left: dimensions[0], right: dimensions[2] },
+                { left: dimensions[0], right: dimensions[3] },
+                { left: dimensions[1], right: dimensions[2] },
+                { left: dimensions[1], right: dimensions[3] },
+                { left: dimensions[2], right: dimensions[3] }
+            ];
+
+            const currentDimPair = computed(() => dimensionPairs[anpDimIndex.value]);
+
+            const anpDimResultText = computed(() => {
+                const val = anpDimAnswers.value[anpDimIndex.value];
+                const left = currentDimPair.value.left.name;
+                const right = currentDimPair.value.right.name;
+                if (val === 5) return `${left} 與 ${right} 同等重要`;
+                if (val < 5) return `${left} 比 ${right} 重要（${anpScaleLabels[val - 1]} 倍）`;
+                return `${right} 比 ${left} 重要（${anpScaleLabels[val - 1]} 倍）`;
+            });
+
+            const nextAnpDim = () => {
+                if (anpDimIndex.value < dimensionPairs.length - 1) {
+                    anpDimIndex.value++;
+                } else {
+                    currentStage.value = 3;
+                }
+                autoSave();
+            };
+
+            // ===== ANP 指標比較（含相依性）=====
+            // 結構：對於每個構面 X，問「在 X 影響下，Y 構面內的指標比較」
+            // 共 4×4×3 = 48 題（每個影響構面 × 每個被影響構面 × 3 對指標）
+            const anpCriteriaContextIndex = ref(0); // 0-15 (4×4 情境)
+            const anpCriteriaPairIndex = ref(0); // 0-2 (每情境 3 對)
+            const anpCriteriaAnswers = ref({});
+
+            const initAnpCriteria = () => {
+                // 結構: { "A_A": [5,5,5], "A_B": [5,5,5], ... }
+                dimensions.forEach(influence => {
+                    dimensions.forEach(target => {
+                        anpCriteriaAnswers.value[`${influence.id}_${target.id}`] = [5, 5, 5];
+                    });
+                });
+            };
+
+            // 計算當前情境的影響構面和目標構面
+            const currentInfluenceDim = computed(() => {
+                const influenceIdx = Math.floor(anpCriteriaContextIndex.value / 4);
+                return dimensions[influenceIdx];
+            });
+
+            const currentTargetDim = computed(() => {
+                const targetIdx = anpCriteriaContextIndex.value % 4;
+                return dimensions[targetIdx];
+            });
+
+            const currentTargetCriteria = computed(() => {
+                return criteria.filter(c => c.dimension === currentTargetDim.value.id);
+            });
+
+            const currentCriteriaPair = computed(() => {
+                const cs = currentTargetCriteria.value;
+                const pairs = [
+                    { left: cs[0], right: cs[1] },
+                    { left: cs[0], right: cs[2] },
+                    { left: cs[1], right: cs[2] }
+                ];
+                return pairs[anpCriteriaPairIndex.value];
+            });
+
+            const currentAnpCriteriaAnswer = computed(() => {
+                const key = `${currentInfluenceDim.value.id}_${currentTargetDim.value.id}`;
+                return anpCriteriaAnswers.value[key][anpCriteriaPairIndex.value];
+            });
+
+            const setAnpCriteriaAnswer = (val) => {
+                const key = `${currentInfluenceDim.value.id}_${currentTargetDim.value.id}`;
+                anpCriteriaAnswers.value[key][anpCriteriaPairIndex.value] = val;
+                autoSave();
+            };
+
+            const anpCriteriaProgress = computed(() => {
+                const total = 16 * 3; // 48 題
+                const done = anpCriteriaContextIndex.value * 3 + anpCriteriaPairIndex.value + 1;
+                return (done / total) * 100;
+            });
+
+            const anpCriteriaResultText = computed(() => {
+                const val = currentAnpCriteriaAnswer.value;
+                const left = currentCriteriaPair.value.left;
+                const right = currentCriteriaPair.value.right;
+                if (val === 5) return `${left.id} ${left.name} 與 ${right.id} ${right.name} 同等重要`;
+                if (val < 5) return `${left.id} 比 ${right.id} 重要（${anpScaleLabels[val - 1]} 倍）`;
+                return `${right.id} 比 ${left.id} 重要（${anpScaleLabels[val - 1]} 倍）`;
+            });
+
+            const isLastAnpCriteria = computed(() => {
+                return anpCriteriaContextIndex.value === 15 && anpCriteriaPairIndex.value === 2;
+            });
+
+            const prevAnpCriteria = () => {
+                if (anpCriteriaPairIndex.value > 0) {
+                    anpCriteriaPairIndex.value--;
+                } else if (anpCriteriaContextIndex.value > 0) {
+                    anpCriteriaContextIndex.value--;
+                    anpCriteriaPairIndex.value = 2;
+                }
+            };
+
+            const nextAnpCriteria = async () => {
+                if (anpCriteriaPairIndex.value < 2) {
+                    anpCriteriaPairIndex.value++;
+                } else if (anpCriteriaContextIndex.value < 15) {
+                    anpCriteriaContextIndex.value++;
+                    anpCriteriaPairIndex.value = 0;
+                } else {
+                    // 完成問卷，提交到伺服器
+                    endTime.value = new Date();
+                    submitting.value = true;
+                    
+                    const data = {
+                        surveyId: surveyId.value,
+                        startTime: startTime.value?.toISOString(),
+                        endTime: endTime.value?.toISOString(),
+                        respondent: respondent.value,
+                        deviceType: deviceType.value,
+                        dematelAnswers: dematelAnswers.value,
+                        anpDimAnswers: anpDimAnswers.value,
+                        anpCriteriaAnswers: anpCriteriaAnswers.value,
+                        status: 'completed'
+                    };
+                    
+                    try {
+                        const res = await fetch('/api/survey/submit', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(data)
+                        });
+                        const result = await res.json();
+                        if (result.success) {
+                            // 清除本機儲存
+                            localStorage.removeItem('fuzzy_danp_survey');
+                            currentStage.value = 4;
+                        } else {
+                            alert('提交失敗，請稍後再試');
+                        }
+                    } catch (e) {
+                        console.error('Submit error:', e);
+                        alert('網路錯誤，請檢查網路連線後再試');
+                    }
+                    
+                    submitting.value = false;
+                    return;
+                }
+                autoSave();
+            };
+
+            // ===== 整體進度 =====
+            const totalQuestions = 132 + 6 + 48;
+            const overallProgress = computed(() => {
+                if (currentStage.value === 0) return 0;
+                if (currentStage.value === 4) return 100;
+                
+                let p = 0;
+                // DEMATEL: 71% (132/186)
+                if (currentStage.value >= 1) {
+                    p += (dematelFromIndex.value / 12) * 71;
+                }
+                if (currentStage.value > 1) p = 71;
+                
+                // ANP Dim: 3% (6/186)
+                if (currentStage.value >= 2) {
+                    p += (anpDimIndex.value / 6) * 3;
+                }
+                if (currentStage.value > 2) p = 74;
+                
+                // ANP Criteria: 26% (48/186)
+                if (currentStage.value >= 3) {
+                    p += (anpCriteriaProgress.value / 100) * 26;
+                }
+                
+                return Math.min(100, p);
+            });
+
+            const estimatedTime = computed(() => {
+                // 讓預估時間顯示更舒適，不要一開始就顯示很大的數字
+                const progress = overallProgress.value;
+                if (progress < 5) return '25-30';  // 剛開始
+                if (progress < 20) return '20-25';
+                if (progress < 40) return '15-20';
+                if (progress < 60) return '10-15';
+                if (progress < 80) return '5-10';
+                if (progress < 95) return '< 5';
+                return '< 1';
+            });
+
+            const elapsedTimeText = computed(() => {
+                if (!startTime.value || !endTime.value) return '-';
+                const diff = Math.round((endTime.value - startTime.value) / 60000);
+                return `${diff} 分鐘`;
+            });
+
+            // ===== 驗證與開始 =====
+            const canStart = computed(() => {
+                return respondent.value.name && respondent.value.organization && respondent.value.experience;
+            });
+
+            const startSurvey = () => {
+                if (canStart.value) {
+                    if (!startTime.value) startTime.value = new Date();
+                    if (!surveyId.value) surveyId.value = generateUUID();
+                    currentStage.value = 1;
+                    autoSave();
+                }
+            };
+
+            const generateUUID = () => {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                    const r = Math.random() * 16 | 0;
+                    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+                });
+            };
+
+            // ===== 儲存與載入 =====
+            const autoSave = async () => {
+                const data = {
+                    surveyId: surveyId.value,
+                    startTime: startTime.value?.toISOString(),
+                    respondent: respondent.value,
+                    deviceType: deviceType.value,
+                    currentStage: currentStage.value,
+                    dematelFromIndex: dematelFromIndex.value,
+                    dematelAnswers: dematelAnswers.value,
+                    anpDimIndex: anpDimIndex.value,
+                    anpDimAnswers: anpDimAnswers.value,
+                    anpCriteriaContextIndex: anpCriteriaContextIndex.value,
+                    anpCriteriaPairIndex: anpCriteriaPairIndex.value,
+                    anpCriteriaAnswers: anpCriteriaAnswers.value,
+                    status: 'in_progress',
+                    savedAt: new Date().toISOString()
+                };
+                
+                // 儲存到本機
+                localStorage.setItem('fuzzy_danp_survey', JSON.stringify(data));
+                
+                // 上傳到伺服器
+                try {
+                    await fetch('/api/survey/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                } catch (e) {
+                    console.log('伺服器儲存失敗，已儲存至本機', e);
+                }
+                
+                showSaveToast.value = true;
+                setTimeout(() => showSaveToast.value = false, 1500);
+            };
+
+            const loadProgress = () => {
+                const saved = localStorage.getItem('fuzzy_danp_survey');
+                if (saved) {
+                    try {
+                        const data = JSON.parse(saved);
+                        surveyId.value = data.surveyId || generateUUID();
+                        if (data.startTime) startTime.value = new Date(data.startTime);
+                        respondent.value = data.respondent || respondent.value;
+                        currentStage.value = data.currentStage || 0;
+                        dematelFromIndex.value = data.dematelFromIndex || 0;
+                        dematelAnswers.value = data.dematelAnswers || dematelAnswers.value;
+                        anpDimIndex.value = data.anpDimIndex || 0;
+                        anpDimAnswers.value = data.anpDimAnswers || anpDimAnswers.value;
+                        anpCriteriaContextIndex.value = data.anpCriteriaContextIndex || 0;
+                        anpCriteriaPairIndex.value = data.anpCriteriaPairIndex || 0;
+                        anpCriteriaAnswers.value = data.anpCriteriaAnswers || anpCriteriaAnswers.value;
+                        hasSavedProgress.value = true;
+                        
+                        // 計算已儲存進度百分比
+                        let p = 0;
+                        if (data.currentStage >= 1) p += (data.dematelFromIndex / 12) * 71;
+                        if (data.currentStage > 1) p = 71;
+                        if (data.currentStage >= 2) p += (data.anpDimIndex / 6) * 3;
+                        if (data.currentStage > 2) p = 74;
+                        if (data.currentStage >= 3) {
+                            const done = data.anpCriteriaContextIndex * 3 + data.anpCriteriaPairIndex;
+                            p += (done / 48) * 26;
+                        }
+                        savedProgressPercent.value = Math.round(p);
+                    } catch (e) { console.error(e); }
+                }
+            };
+
+            const clearProgress = () => {
+                if (confirm('確定要清除所有填答進度嗎？此操作無法復原。')) {
+                    localStorage.removeItem('fuzzy_danp_survey');
+                    location.reload();
+                }
+            };
+
+            // ===== 匯出 =====
+            const exportFullJSON = () => {
+                const data = {
+                    meta: {
+                        surveyId: surveyId.value,
+                        version: '1.0',
+                        exportTime: new Date().toISOString(),
+                        startTime: startTime.value?.toISOString(),
+                        endTime: endTime.value?.toISOString(),
+                        device: deviceType.value
+                    },
+                    respondent: respondent.value,
+                    dematel: {
+                        answers: dematelAnswers.value,
+                        fuzzyScale: fuzzyLevels.map(l => ({ value: l.value, label: l.label, tfn: l.tfn }))
+                    },
+                    anp: {
+                        dimensionComparisons: anpDimAnswers.value,
+                        dimensionPairs: dimensionPairs.map(p => `${p.left.id}_vs_${p.right.id}`),
+                        criteriaComparisons: anpCriteriaAnswers.value
+                    },
+                    criteria: criteria,
+                    dimensions: dimensions
+                };
+                downloadFile(JSON.stringify(data, null, 2), `fuzzy_danp_${surveyId.value}.json`, 'application/json');
+            };
+
+            const exportDematelCSV = () => {
+                let csv = 'From,To,Value,Label,TFN_L,TFN_M,TFN_U\n';
+                criteria.forEach(from => {
+                    criteria.forEach(to => {
+                        if (from.id !== to.id) {
+                            const val = dematelAnswers.value[from.id][to.id];
+                            const level = fuzzyLevels[val];
+                            csv += `${from.id},${to.id},${val},${level.label},${level.tfn[0]},${level.tfn[1]},${level.tfn[2]}\n`;
+                        }
+                    });
+                });
+                downloadFile(csv, `dematel_${surveyId.value}.csv`, 'text/csv');
+            };
+
+            const exportANPCSV = () => {
+                let csv = 'Type,Context,Left,Right,Value,Interpretation\n';
+                
+                // 構面比較
+                dimensionPairs.forEach((pair, i) => {
+                    const val = anpDimAnswers.value[i];
+                    csv += `Dimension,-,${pair.left.id},${pair.right.id},${val},${val < 5 ? pair.left.id + ' preferred' : val > 5 ? pair.right.id + ' preferred' : 'Equal'}\n`;
+                });
+                
+                // 指標比較
+                dimensions.forEach(influence => {
+                    dimensions.forEach(target => {
+                        const key = `${influence.id}_${target.id}`;
+                        const answers = anpCriteriaAnswers.value[key];
+                        const cs = criteria.filter(c => c.dimension === target.id);
+                        const pairs = [[cs[0], cs[1]], [cs[0], cs[2]], [cs[1], cs[2]]];
+                        pairs.forEach((pair, i) => {
+                            const val = answers[i];
+                            csv += `Criteria,${key},${pair[0].id},${pair[1].id},${val},${val < 5 ? pair[0].id + ' preferred' : val > 5 ? pair[1].id + ' preferred' : 'Equal'}\n`;
+                        });
+                    });
+                });
+                
+                downloadFile(csv, `anp_${surveyId.value}.csv`, 'text/csv');
+            };
+
+            const downloadFile = (content, filename, type) => {
+                const blob = new Blob([content], { type });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            // ===== 初始化 =====
+            onMounted(() => {
+                initDematel();
+                initAnpCriteria();
+                loadProgress();
+                if (!surveyId.value) surveyId.value = generateUUID();
+                setTimeout(() => loading.value = false, 500);
+            });
+
+            return {
+                loading, currentStage, showSaveToast, hasSavedProgress, savedProgressPercent, submitting,
+                surveyId, deviceType, respondent, dimensions, criteria, stages,
+                fuzzyLevels, anpScaleLabels, elapsedTimeText,
+                
+                // DEMATEL
+                dematelFromIndex, dematelAnswers, currentFromCriteria, otherCriteria,
+                dematelProgress, setDematelAnswer, prevDematel, nextDematel,
+                
+                // ANP Dim
+                anpDimIndex, anpDimAnswers, dimensionPairs, currentDimPair,
+                anpDimResultText, nextAnpDim,
+                
+                // ANP Criteria
+                anpCriteriaContextIndex, anpCriteriaPairIndex, currentInfluenceDim, currentTargetDim,
+                currentCriteriaPair, currentAnpCriteriaAnswer, setAnpCriteriaAnswer,
+                anpCriteriaProgress, anpCriteriaResultText, isLastAnpCriteria,
+                prevAnpCriteria, nextAnpCriteria,
+                
+                // Progress & Actions
+                overallProgress, estimatedTime, canStart, startSurvey, clearProgress,
+                exportFullJSON, exportDematelCSV, exportANPCSV
+            };
+        }
+    }).mount('#app');
+    </script>
+</body>
+</html>
