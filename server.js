@@ -265,10 +265,16 @@ app.get('/api/admin/response/:surveyId', authMiddleware, async (req, res) => {
 // 6. 匯出所有資料為 JSON
 app.get('/api/admin/export/json', authMiddleware, async (req, res) => {
     try {
-        const [responses] = await pool.execute('SELECT * FROM responses WHERE status = ?', ['completed']);
+        const includeAll = req.query.includeAll === 'true';
+        const query = includeAll
+            ? 'SELECT * FROM responses ORDER BY updated_at DESC'
+            : 'SELECT * FROM responses WHERE status = ? ORDER BY updated_at DESC';
+        const params = includeAll ? [] : ['completed'];
+        const [responses] = await pool.execute(query, params);
 
         const exportData = responses.map(r => ({
             surveyId: r.survey_id,
+            status: r.status,
             respondent: {
                 name: r.respondent_name,
                 organization: r.respondent_org,
@@ -295,18 +301,23 @@ app.get('/api/admin/export/json', authMiddleware, async (req, res) => {
 // 7. 匯出 DEMATEL 矩陣 CSV（所有人）
 app.get('/api/admin/export/dematel-csv', authMiddleware, async (req, res) => {
     try {
-        const [responses] = await pool.execute('SELECT survey_id, respondent_name, dematel_data FROM responses WHERE status = ?', ['completed']);
+        const includeAll = req.query.includeAll === 'true';
+        const query = includeAll
+            ? 'SELECT survey_id, respondent_name, status, dematel_data FROM responses ORDER BY updated_at DESC'
+            : 'SELECT survey_id, respondent_name, status, dematel_data FROM responses WHERE status = ? ORDER BY updated_at DESC';
+        const params = includeAll ? [] : ['completed'];
+        const [responses] = await pool.execute(query, params);
 
         const criteria = ['A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3', 'D1', 'D2', 'D3'];
 
-        let csv = 'Respondent,SurveyID,From,To,Value\n';
+        let csv = 'Respondent,SurveyID,Status,From,To,Value\n';
 
         responses.forEach(r => {
             const dematel = JSON.parse(r.dematel_data || '{}');
             criteria.forEach(from => {
                 criteria.forEach(to => {
                     if (from !== to && dematel[from] && dematel[from][to] !== undefined) {
-                        csv += `"${r.respondent_name}",${r.survey_id},${from},${to},${dematel[from][to]}\n`;
+                        csv += `"${r.respondent_name}",${r.survey_id},${r.status},${from},${to},${dematel[from][to]}\n`;
                     }
                 });
             });
@@ -323,9 +334,14 @@ app.get('/api/admin/export/dematel-csv', authMiddleware, async (req, res) => {
 // 8. 匯出 ANP CSV（所有人）
 app.get('/api/admin/export/anp-csv', authMiddleware, async (req, res) => {
     try {
-        const [responses] = await pool.execute('SELECT survey_id, respondent_name, anp_dim_data, anp_criteria_data FROM responses WHERE status = ?', ['completed']);
+        const includeAll = req.query.includeAll === 'true';
+        const query = includeAll
+            ? 'SELECT survey_id, respondent_name, status, anp_dim_data, anp_criteria_data FROM responses ORDER BY updated_at DESC'
+            : 'SELECT survey_id, respondent_name, status, anp_dim_data, anp_criteria_data FROM responses WHERE status = ? ORDER BY updated_at DESC';
+        const params = includeAll ? [] : ['completed'];
+        const [responses] = await pool.execute(query, params);
 
-        let csv = 'Respondent,SurveyID,Type,Context,Left,Right,Value\n';
+        let csv = 'Respondent,SurveyID,Status,Type,Context,Left,Right,Value\n';
 
         const dimPairs = ['A_B', 'A_C', 'A_D', 'B_C', 'B_D', 'C_D'];
 
@@ -335,7 +351,7 @@ app.get('/api/admin/export/anp-csv', authMiddleware, async (req, res) => {
 
             dimPairs.forEach((pair, i) => {
                 const [left, right] = pair.split('_');
-                csv += `"${r.respondent_name}",${r.survey_id},Dimension,-,${left},${right},${anpDim[i] || 5}\n`;
+                csv += `"${r.respondent_name}",${r.survey_id},${r.status},Dimension,-,${left},${right},${anpDim[i] || 5}\n`;
             });
 
             Object.entries(anpCriteria).forEach(([context, values]) => {
@@ -345,7 +361,7 @@ app.get('/api/admin/export/anp-csv', authMiddleware, async (req, res) => {
                 const pairs = [[cs[0], cs[1]], [cs[0], cs[2]], [cs[1], cs[2]]];
 
                 pairs.forEach((pair, i) => {
-                    csv += `"${r.respondent_name}",${r.survey_id},Criteria,${context},${pair[0]},${pair[1]},${values[i] || 5}\n`;
+                    csv += `"${r.respondent_name}",${r.survey_id},${r.status},Criteria,${context},${pair[0]},${pair[1]},${values[i] || 5}\n`;
                 });
             });
         });

@@ -127,12 +127,22 @@
             <!-- 匯出按鈕區 -->
             <div class="bg-white rounded-xl p-6 shadow-sm mb-6">
                 <h2 class="font-bold text-slate-800 mb-4">📥 匯出資料</h2>
+
+                <!-- 匯出選項切換 -->
+                <div class="flex items-center gap-4 mb-4">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" v-model="includeIncomplete"
+                            class="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500">
+                        <span class="text-sm text-slate-700">包含未完成問卷</span>
+                    </label>
+                </div>
+
                 <div class="flex flex-wrap gap-3">
-                    <a @click="downloadExport('json')" 
+                    <a @click="downloadExport('json')"
                        class="px-6 py-3 bg-sky-600 text-white rounded-lg font-medium hover:bg-sky-700 transition inline-flex items-center gap-2 cursor-pointer">
                         📄 匯出完整 JSON
                     </a>
-                    <a @click="downloadExport('dematel-csv')" 
+                    <a @click="downloadExport('dematel-csv')"
                        class="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition inline-flex items-center gap-2 cursor-pointer">
                         📊 匯出 DEMATEL CSV
                     </a>
@@ -141,19 +151,85 @@
                         📊 匯出 ANP CSV
                     </a>
                 </div>
-                <p class="text-sm text-slate-500 mt-3">* 僅匯出已完成的問卷</p>
+                <p class="text-sm text-slate-500 mt-3">
+                    {{ includeIncomplete ? '* 將匯出全部問卷（含未完成）' : '* 僅匯出已完成的問卷' }}
+                </p>
             </div>
 
             <!-- 填答列表 -->
             <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                 <div class="p-6 border-b">
-                    <h2 class="font-bold text-slate-800">📝 填答記錄</h2>
+                    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <h2 class="font-bold text-slate-800">📝 填答記錄</h2>
+
+                        <!-- 搜索和篩選區 -->
+                        <div class="flex flex-wrap gap-3">
+                            <!-- 搜索框 -->
+                            <input v-model="searchText"
+                                type="text"
+                                placeholder="搜尋姓名..."
+                                class="px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none w-40">
+
+                            <!-- 機構篩選 -->
+                            <select v-model="filterOrg" class="px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none">
+                                <option value="">全部機構</option>
+                                <option value="big4">四大會計師事務所</option>
+                                <option value="other_cpa">其他會計師事務所</option>
+                                <option value="listed_company">上市櫃公司</option>
+                                <option value="regulator">主管機關</option>
+                                <option value="academia">學術單位</option>
+                                <option value="other">其他</option>
+                            </select>
+
+                            <!-- 狀態篩選 -->
+                            <select v-model="filterStatus" class="px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none">
+                                <option value="">全部狀態</option>
+                                <option value="completed">已完成</option>
+                                <option value="in_progress">填答中</option>
+                            </select>
+
+                            <!-- 清除篩選 -->
+                            <button v-if="searchText || filterOrg || filterStatus"
+                                @click="clearFilters"
+                                class="px-3 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition">
+                                ✕ 清除
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 篩選結果統計 -->
+                    <div v-if="searchText || filterOrg || filterStatus" class="mt-3 text-sm text-slate-500">
+                        篩選結果：{{ filteredResponses.length }} 筆 / 總共 {{ responses.length }} 筆
+                    </div>
                 </div>
                 
+                <!-- 批量操作工具列 -->
+                <div v-if="selectedIds.length > 0" class="px-6 py-3 bg-sky-50 border-b flex items-center gap-4">
+                    <span class="text-sm text-sky-700 font-medium">已選擇 {{ selectedIds.length }} 筆</span>
+                    <button @click="batchExport"
+                        class="px-4 py-1.5 bg-sky-600 text-white rounded-lg text-sm hover:bg-sky-700 transition">
+                        匯出選取
+                    </button>
+                    <button @click="batchDelete"
+                        class="px-4 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition">
+                        刪除選取
+                    </button>
+                    <button @click="clearSelection"
+                        class="px-4 py-1.5 text-slate-600 hover:bg-slate-200 rounded-lg text-sm transition">
+                        取消選取
+                    </button>
+                </div>
+
                 <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead class="bg-slate-50">
                             <tr>
+                                <th class="px-4 py-3 text-left">
+                                    <input type="checkbox"
+                                        :checked="isAllSelected"
+                                        @change="toggleSelectAll"
+                                        class="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500">
+                                </th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">填答者</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">單位</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">年資</th>
@@ -164,12 +240,19 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-                            <tr v-if="responses.length === 0">
-                                <td colspan="7" class="px-4 py-8 text-center text-slate-500">
-                                    尚無填答記錄
+                            <tr v-if="filteredResponses.length === 0">
+                                <td colspan="8" class="px-4 py-8 text-center text-slate-500">
+                                    {{ responses.length === 0 ? '尚無填答記錄' : '沒有符合條件的記錄' }}
                                 </td>
                             </tr>
-                            <tr v-for="r in responses" :key="r.survey_id" class="hover:bg-slate-50">
+                            <tr v-for="r in filteredResponses" :key="r.survey_id"
+                                :class="['hover:bg-slate-50', selectedIds.includes(r.survey_id) ? 'bg-sky-50' : '']">
+                                <td class="px-4 py-4">
+                                    <input type="checkbox"
+                                        :checked="selectedIds.includes(r.survey_id)"
+                                        @change="toggleSelect(r.survey_id)"
+                                        class="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500">
+                                </td>
                                 <td class="px-4 py-4">
                                     <div class="font-medium text-slate-800">{{ r.respondent_name || '(未填)' }}</div>
                                     <div class="text-xs text-slate-400">{{ r.survey_id.slice(0, 8) }}...</div>
@@ -188,11 +271,11 @@
                                 <td class="px-4 py-4 text-sm text-slate-500">{{ formatDate(r.updated_at) }}</td>
                                 <td class="px-4 py-4">
                                     <div class="flex gap-2">
-                                        <button @click="viewDetail(r.survey_id)" 
+                                        <button @click="viewDetail(r.survey_id)"
                                             class="px-3 py-1 bg-sky-100 text-sky-700 rounded text-sm hover:bg-sky-200 transition">
                                             查看
                                         </button>
-                                        <button @click="deleteResponse(r.survey_id)" 
+                                        <button @click="deleteResponse(r.survey_id)"
                                             class="px-3 py-1 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200 transition">
                                             刪除
                                         </button>
@@ -228,37 +311,125 @@
                                 <div><span class="text-slate-500">年齡：</span>{{ detailData.respondent_age || '未提供' }}</div>
                                 <div><span class="text-slate-500">性別：</span>{{ detailData.respondent_gender || '未提供' }}</div>
                                 <div><span class="text-slate-500">裝置：</span>{{ detailData.device_type }}</div>
+                                <div><span class="text-slate-500">開始：</span>{{ formatDate(detailData.start_time) }}</div>
+                                <div><span class="text-slate-500">完成：</span>{{ formatDate(detailData.end_time) }}</div>
+                                <div><span class="text-slate-500">狀態：</span>
+                                    <span :class="detailData.status === 'completed' ? 'text-green-600' : 'text-amber-600'">
+                                        {{ detailData.status === 'completed' ? '已完成' : '填答中' }}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- DEMATEL 摘要 -->
+                        <!-- DEMATEL 完整矩陣 -->
                         <div class="mb-6">
-                            <h4 class="font-bold text-slate-700 mb-3">📊 DEMATEL 資料</h4>
-                            <div class="bg-slate-50 rounded-lg p-4 text-sm">
-                                <p class="text-slate-600 mb-2">影響關係矩陣已記錄 {{ countDematel }} 筆</p>
-                                <button @click="downloadSingleDematel" 
-                                    class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition">
-                                    下載此人 DEMATEL CSV
-                                </button>
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="font-bold text-slate-700">📊 DEMATEL 影響關係矩陣</h4>
+                                <div class="flex gap-2">
+                                    <button @click="showDematelMatrix = !showDematelMatrix"
+                                        class="px-3 py-1 text-sm text-slate-600 hover:bg-slate-100 rounded transition">
+                                        {{ showDematelMatrix ? '收起' : '展開' }}
+                                    </button>
+                                    <button @click="downloadSingleDematel"
+                                        class="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition">
+                                        下載 CSV
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-if="showDematelMatrix" class="bg-slate-50 rounded-lg p-4 overflow-x-auto">
+                                <p class="text-sm text-slate-600 mb-3">已記錄 {{ countDematel }} 筆影響關係 (0=無影響, 1=低, 2=中, 3=高, 4=非常高)</p>
+                                <table class="text-xs border-collapse w-full min-w-max">
+                                    <thead>
+                                        <tr>
+                                            <th class="border border-slate-300 bg-slate-200 px-2 py-1">From \ To</th>
+                                            <th v-for="c in criteriaList" :key="c" class="border border-slate-300 bg-slate-200 px-2 py-1">{{ c }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="from in criteriaList" :key="from">
+                                            <td class="border border-slate-300 bg-slate-200 px-2 py-1 font-medium">{{ from }}</td>
+                                            <td v-for="to in criteriaList" :key="to"
+                                                :class="['border border-slate-300 px-2 py-1 text-center',
+                                                    from === to ? 'bg-slate-200' : getDematelCellClass(detailData.dematel_data, from, to)]">
+                                                {{ from === to ? '-' : getDematelValue(detailData.dematel_data, from, to) }}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div v-else class="bg-slate-50 rounded-lg p-4 text-sm text-slate-600">
+                                已記錄 {{ countDematel }} 筆影響關係
                             </div>
                         </div>
 
-                        <!-- ANP 摘要 -->
+                        <!-- ANP 構面比較 -->
                         <div class="mb-6">
-                            <h4 class="font-bold text-slate-700 mb-3">📊 ANP 資料</h4>
-                            <div class="bg-slate-50 rounded-lg p-4 text-sm">
-                                <p class="text-slate-600 mb-2">構面比較：6 筆 | 指標比較：48 筆</p>
-                                <button @click="downloadSingleANP" 
-                                    class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 transition">
-                                    下載此人 ANP CSV
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="font-bold text-slate-700">📊 ANP 構面比較</h4>
+                                <div class="flex gap-2">
+                                    <button @click="showAnpDimData = !showAnpDimData"
+                                        class="px-3 py-1 text-sm text-slate-600 hover:bg-slate-100 rounded transition">
+                                        {{ showAnpDimData ? '收起' : '展開' }}
+                                    </button>
+                                    <button @click="downloadSingleANP"
+                                        class="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 transition">
+                                        下載 CSV
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-if="showAnpDimData" class="bg-slate-50 rounded-lg p-4">
+                                <p class="text-sm text-slate-600 mb-3">構面重要性比較 (1=左側極重要, 5=相等, 9=右側極重要)</p>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                                    <div v-for="(pair, i) in dimPairLabels" :key="i"
+                                        class="bg-white rounded-lg p-3 border border-slate-200">
+                                        <div class="text-slate-500 text-xs mb-1">{{ pair }}</div>
+                                        <div class="font-bold text-lg" :class="getAnpDimColor(detailData.anp_dim_data?.[i])">
+                                            {{ detailData.anp_dim_data?.[i] ?? '-' }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="bg-slate-50 rounded-lg p-4 text-sm text-slate-600">
+                                已記錄 6 筆構面比較
+                            </div>
+                        </div>
+
+                        <!-- ANP 指標比較 -->
+                        <div class="mb-6">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="font-bold text-slate-700">📊 ANP 指標比較</h4>
+                                <button @click="showAnpCriteriaData = !showAnpCriteriaData"
+                                    class="px-3 py-1 text-sm text-slate-600 hover:bg-slate-100 rounded transition">
+                                    {{ showAnpCriteriaData ? '收起' : '展開' }}
                                 </button>
+                            </div>
+                            <div v-if="showAnpCriteriaData" class="bg-slate-50 rounded-lg p-4">
+                                <p class="text-sm text-slate-600 mb-3">各構面影響下的指標比較 (1=左側極重要, 5=相等, 9=右側極重要)</p>
+                                <div class="space-y-4">
+                                    <div v-for="(context, key) in detailData.anp_criteria_data" :key="key"
+                                        class="bg-white rounded-lg p-3 border border-slate-200">
+                                        <div class="text-slate-700 font-medium mb-2">{{ formatAnpContext(key) }}</div>
+                                        <div class="grid grid-cols-3 gap-2 text-sm">
+                                            <div v-for="(pair, i) in getCriteriaPairs(key)" :key="i"
+                                                class="text-center">
+                                                <div class="text-xs text-slate-500">{{ pair }}</div>
+                                                <div class="font-bold" :class="getAnpDimColor(context[i])">
+                                                    {{ context[i] ?? '-' }}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="bg-slate-50 rounded-lg p-4 text-sm text-slate-600">
+                                已記錄 {{ countAnpCriteria }} 筆指標比較
                             </div>
                         </div>
 
                         <!-- 完整 JSON -->
                         <div>
                             <h4 class="font-bold text-slate-700 mb-3">📄 完整原始資料</h4>
-                            <button @click="downloadSingleJSON" 
+                            <button @click="downloadSingleJSON"
                                 class="px-4 py-2 bg-sky-600 text-white rounded-lg text-sm hover:bg-sky-700 transition">
                                 下載此人完整 JSON
                             </button>
@@ -280,7 +451,27 @@
             const showDetail = ref(false);
             const detailData = ref(null);
             const analytics = ref({});
-            
+
+            // 搜索和篩選
+            const searchText = ref('');
+            const filterOrg = ref('');
+            const filterStatus = ref('');
+
+            // 批量選擇
+            const selectedIds = ref([]);
+
+            // 導出選項
+            const includeIncomplete = ref(false);
+
+            // 詳情展開狀態
+            const showDematelMatrix = ref(false);
+            const showAnpDimData = ref(false);
+            const showAnpCriteriaData = ref(false);
+
+            // 常量
+            const criteriaList = ['A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3', 'D1', 'D2', 'D3'];
+            const dimPairLabels = ['A vs B', 'A vs C', 'A vs D', 'B vs C', 'B vs D', 'C vs D'];
+
             // Chart instances
             let dailyChart, deviceChart, timeChart, orgChart;
 
@@ -349,18 +540,126 @@
                 fetchAnalytics();
             };
 
+            // 篩選後的響應列表
+            const filteredResponses = computed(() => {
+                return responses.value.filter(r => {
+                    const matchName = !searchText.value ||
+                        (r.respondent_name || '').toLowerCase().includes(searchText.value.toLowerCase());
+                    const matchOrg = !filterOrg.value || r.respondent_org === filterOrg.value;
+                    const matchStatus = !filterStatus.value || r.status === filterStatus.value;
+                    return matchName && matchOrg && matchStatus;
+                });
+            });
+
+            // 清除篩選
+            const clearFilters = () => {
+                searchText.value = '';
+                filterOrg.value = '';
+                filterStatus.value = '';
+            };
+
+            // 全選狀態
+            const isAllSelected = computed(() => {
+                return filteredResponses.value.length > 0 &&
+                    filteredResponses.value.every(r => selectedIds.value.includes(r.survey_id));
+            });
+
+            // 切換全選
+            const toggleSelectAll = () => {
+                if (isAllSelected.value) {
+                    selectedIds.value = [];
+                } else {
+                    selectedIds.value = filteredResponses.value.map(r => r.survey_id);
+                }
+            };
+
+            // 切換單個選擇
+            const toggleSelect = (surveyId) => {
+                const index = selectedIds.value.indexOf(surveyId);
+                if (index > -1) {
+                    selectedIds.value.splice(index, 1);
+                } else {
+                    selectedIds.value.push(surveyId);
+                }
+            };
+
+            // 清除選擇
+            const clearSelection = () => {
+                selectedIds.value = [];
+            };
+
+            // 批量匯出
+            const batchExport = async () => {
+                if (selectedIds.value.length === 0) return;
+
+                try {
+                    const allData = [];
+                    for (const id of selectedIds.value) {
+                        const res = await fetch(`/api/admin/response/${id}`, {
+                            headers: getAuthHeaders()
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            allData.push({
+                                surveyId: data.data.survey_id,
+                                respondent: {
+                                    name: data.data.respondent_name,
+                                    organization: data.data.respondent_org,
+                                    experience: data.data.respondent_exp,
+                                    age: data.data.respondent_age,
+                                    gender: data.data.respondent_gender
+                                },
+                                deviceType: data.data.device_type,
+                                status: data.data.status,
+                                startTime: data.data.start_time,
+                                endTime: data.data.end_time,
+                                dematel: data.data.dematel_data,
+                                anpDimension: data.data.anp_dim_data,
+                                anpCriteria: data.data.anp_criteria_data
+                            });
+                        }
+                    }
+                    downloadFile(JSON.stringify(allData, null, 2), `selected_${selectedIds.value.length}_responses.json`);
+                } catch (e) {
+                    console.error(e);
+                    alert('匯出失敗');
+                }
+            };
+
+            // 批量刪除
+            const batchDelete = async () => {
+                if (selectedIds.value.length === 0) return;
+                if (!confirm(`確定要刪除選取的 ${selectedIds.value.length} 份問卷嗎？`)) return;
+
+                try {
+                    for (const id of selectedIds.value) {
+                        await fetch(`/api/admin/response/${id}`, {
+                            method: 'DELETE',
+                            headers: getAuthHeaders()
+                        });
+                    }
+                    selectedIds.value = [];
+                    refreshData();
+                } catch (e) {
+                    console.error(e);
+                    alert('刪除失敗');
+                }
+            };
+
             const downloadExport = async (type) => {
                 try {
-                    const res = await fetch(`/api/admin/export/${type}`, {
+                    const includeAll = includeIncomplete.value ? '?includeAll=true' : '';
+                    const res = await fetch(`/api/admin/export/${type}${includeAll}`, {
                         headers: getAuthHeaders()
                     });
-                    
+
                     if (res.ok) {
                         const blob = await res.blob();
                         const url = window.URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `fuzzy_danp_${type}_${new Date().toISOString().slice(0,10)}.${type.includes('csv') ? 'csv' : 'json'}`;
+                        const suffix = includeIncomplete.value ? '_all' : '_completed';
+                        a.download = `fuzzy_danp_${type}${suffix}_${new Date().toISOString().slice(0,10)}.${type.includes('csv') ? 'csv' : 'json'}`;
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
@@ -371,6 +670,52 @@
                     alert('匯出失敗，請稍後再試');
                 }
             };
+
+            // DEMATEL 矩陣輔助函數
+            const getDematelValue = (dematel, from, to) => {
+                if (!dematel || !dematel[from]) return '-';
+                return dematel[from][to] ?? '-';
+            };
+
+            const getDematelCellClass = (dematel, from, to) => {
+                const val = getDematelValue(dematel, from, to);
+                if (val === '-' || val === undefined) return 'bg-slate-100';
+                const colors = ['bg-green-100', 'bg-green-200', 'bg-yellow-200', 'bg-orange-200', 'bg-red-200'];
+                return colors[val] || 'bg-slate-100';
+            };
+
+            // ANP 顏色輔助函數
+            const getAnpDimColor = (val) => {
+                if (val === undefined || val === null) return 'text-slate-400';
+                if (val < 5) return 'text-sky-600';
+                if (val > 5) return 'text-purple-600';
+                return 'text-slate-700';
+            };
+
+            // ANP 上下文格式化
+            const formatAnpContext = (key) => {
+                const [influence, target] = key.split('_');
+                const dimNames = { A: '壓力/動機', B: '機會', C: '態度/合理化', D: '文字信號' };
+                return `在「${dimNames[influence]}」構面影響下，比較「${dimNames[target]}」構面的指標`;
+            };
+
+            // 取得指標比較對
+            const getCriteriaPairs = (key) => {
+                const targetDim = key.split('_')[1];
+                const criteriaMap = { A: ['A1', 'A2', 'A3'], B: ['B1', 'B2', 'B3'], C: ['C1', 'C2', 'C3'], D: ['D1', 'D2', 'D3'] };
+                const cs = criteriaMap[targetDim];
+                return [`${cs[0]} vs ${cs[1]}`, `${cs[0]} vs ${cs[2]}`, `${cs[1]} vs ${cs[2]}`];
+            };
+
+            // ANP 指標比較計數
+            const countAnpCriteria = computed(() => {
+                if (!detailData.value?.anp_criteria_data) return 0;
+                let count = 0;
+                Object.values(detailData.value.anp_criteria_data).forEach(arr => {
+                    if (Array.isArray(arr)) count += arr.length;
+                });
+                return count;
+            });
 
             const formatOrg = (org) => {
                 const map = {
@@ -610,7 +955,19 @@
                 authenticated, analytics, stats, responses, showDetail, detailData,
                 refreshData, formatOrg, formatDate, viewDetail, deleteResponse,
                 countDematel, downloadSingleDematel, downloadSingleANP, downloadSingleJSON,
-                logout, downloadExport
+                logout, downloadExport,
+                // 搜索和篩選
+                searchText, filterOrg, filterStatus, filteredResponses, clearFilters,
+                // 批量操作
+                selectedIds, isAllSelected, toggleSelectAll, toggleSelect, clearSelection,
+                batchExport, batchDelete,
+                // 導出選項
+                includeIncomplete,
+                // 詳情展開
+                showDematelMatrix, showAnpDimData, showAnpCriteriaData,
+                // 常量和輔助函數
+                criteriaList, dimPairLabels, getDematelValue, getDematelCellClass,
+                getAnpDimColor, formatAnpContext, getCriteriaPairs, countAnpCriteria
             };
         }
     }).mount('#app');
