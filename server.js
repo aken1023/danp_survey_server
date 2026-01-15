@@ -1,8 +1,18 @@
 const express = require('express');
 const Database = require('better-sqlite3');
+const mysql = require('mysql2/promise');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+
+// MySQL 連線設定
+const mysqlConfig = {
+    host: '122.100.99.161',
+    port: 43306,
+    user: 'A999',
+    password: '1023',
+    database: 'fuzzy_danp'
+};
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -467,6 +477,105 @@ app.get('/api/admin/analytics', authMiddleware, (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 12. 資料遷移到 MySQL
+app.post('/api/admin/migrate-to-mysql', authMiddleware, async (req, res) => {
+  let connection;
+  try {
+    // 連接 MySQL
+    connection = await mysql.createConnection(mysqlConfig);
+
+    // 建立資料表
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS responses (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        survey_id VARCHAR(255) UNIQUE NOT NULL,
+        respondent_name VARCHAR(255),
+        respondent_org VARCHAR(255),
+        respondent_exp VARCHAR(255),
+        respondent_age VARCHAR(255),
+        respondent_gender VARCHAR(255),
+        device_type VARCHAR(255),
+        start_time VARCHAR(255),
+        end_time VARCHAR(255),
+        status VARCHAR(50) DEFAULT 'in_progress',
+        dematel_data LONGTEXT,
+        anp_dim_data LONGTEXT,
+        anp_criteria_data LONGTEXT,
+        raw_json LONGTEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
+    // 從 SQLite 讀取所有資料
+    const sqliteData = db.prepare('SELECT * FROM responses').all();
+
+    let inserted = 0;
+    let skipped = 0;
+
+    // 逐筆插入 MySQL
+    for (const row of sqliteData) {
+      try {
+        await connection.execute(`
+          INSERT IGNORE INTO responses
+          (survey_id, respondent_name, respondent_org, respondent_exp,
+           respondent_age, respondent_gender, device_type, start_time,
+           end_time, status, dematel_data, anp_dim_data, anp_criteria_data,
+           raw_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          row.survey_id,
+          row.respondent_name,
+          row.respondent_org,
+          row.respondent_exp,
+          row.respondent_age,
+          row.respondent_gender,
+          row.device_type,
+          row.start_time,
+          row.end_time,
+          row.status,
+          row.dematel_data,
+          row.anp_dim_data,
+          row.anp_criteria_data,
+          row.raw_json,
+          row.created_at,
+          row.updated_at
+        ]);
+
+        // 檢查是否真的有插入
+        if (connection.affectedRows > 0) {
+          inserted++;
+        } else {
+          skipped++;
+        }
+      } catch (insertErr) {
+        skipped++;
+      }
+    }
+
+    await connection.end();
+
+    res.json({
+      success: true,
+      message: '資料遷移完成',
+      data: {
+        total: sqliteData.length,
+        inserted,
+        skipped
+      }
+    });
+  } catch (error) {
+    console.error('Migration error:', error);
+    if (connection) {
+      try { await connection.end(); } catch (e) {}
+    }
+    res.status(500).json({
+      success: false,
+      error: '遷移失敗: ' + error.message
+    });
   }
 });
 

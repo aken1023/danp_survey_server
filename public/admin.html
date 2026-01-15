@@ -136,12 +136,19 @@
                        class="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition inline-flex items-center gap-2 cursor-pointer">
                         📊 匯出 DEMATEL CSV
                     </a>
-                    <a @click="downloadExport('anp-csv')" 
+                    <a @click="downloadExport('anp-csv')"
                        class="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition inline-flex items-center gap-2 cursor-pointer">
                         📊 匯出 ANP CSV
                     </a>
+                    <a @click="migrateToMySQL"
+                       :class="['px-6 py-3 rounded-lg font-medium transition inline-flex items-center gap-2 cursor-pointer',
+                                migrating ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-600 text-white hover:bg-orange-700']"
+                       :disabled="migrating">
+                        <span v-if="migrating">⏳ 遷移中...</span>
+                        <span v-else>🔄 遷移到 MySQL</span>
+                    </a>
                 </div>
-                <p class="text-sm text-slate-500 mt-3">* 僅匯出已完成的問卷</p>
+                <p class="text-sm text-slate-500 mt-3">* 匯出僅包含已完成的問卷；遷移會同步所有資料到 MySQL</p>
             </div>
 
             <!-- 填答列表 -->
@@ -280,6 +287,7 @@
             const showDetail = ref(false);
             const detailData = ref(null);
             const analytics = ref({});
+            const migrating = ref(false);
             
             // Chart instances
             let dailyChart, deviceChart, timeChart, orgChart;
@@ -366,9 +374,39 @@
                         document.body.removeChild(a);
                         window.URL.revokeObjectURL(url);
                     }
-                } catch (e) { 
-                    console.error(e); 
+                } catch (e) {
+                    console.error(e);
                     alert('匯出失敗，請稍後再試');
+                }
+            };
+
+            const migrateToMySQL = async () => {
+                if (migrating.value) return;
+
+                if (!confirm('確定要將所有資料遷移到 MySQL 嗎？\n\n這將會把 SQLite 中的所有問卷資料同步到遠端 MySQL 資料庫。\n已存在的資料會被跳過，不會重複。')) {
+                    return;
+                }
+
+                migrating.value = true;
+
+                try {
+                    const res = await fetch('/api/admin/migrate-to-mysql', {
+                        method: 'POST',
+                        headers: getAuthHeaders()
+                    });
+
+                    const data = await res.json();
+
+                    if (data.success) {
+                        alert(`遷移完成！\n\n總共 ${data.data.total} 筆資料\n成功遷移: ${data.data.inserted} 筆\n跳過（已存在）: ${data.data.skipped} 筆`);
+                    } else {
+                        alert('遷移失敗: ' + data.error);
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert('遷移失敗，請檢查網路連線或伺服器狀態');
+                } finally {
+                    migrating.value = false;
                 }
             };
 
@@ -610,7 +648,7 @@
                 authenticated, analytics, stats, responses, showDetail, detailData,
                 refreshData, formatOrg, formatDate, viewDetail, deleteResponse,
                 countDematel, downloadSingleDematel, downloadSingleANP, downloadSingleJSON,
-                logout, downloadExport
+                logout, downloadExport, migrating, migrateToMySQL
             };
         }
     }).mount('#app');
