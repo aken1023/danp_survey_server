@@ -484,7 +484,18 @@ app.get('/api/admin/analytics', authMiddleware, (req, res) => {
 app.post('/api/admin/migrate-to-mysql', authMiddleware, async (req, res) => {
   let connection;
   try {
-    // 連接 MySQL
+    // 先連接 MySQL（不指定資料庫）建立資料庫
+    const initConnection = await mysql.createConnection({
+      host: mysqlConfig.host,
+      port: mysqlConfig.port,
+      user: mysqlConfig.user,
+      password: mysqlConfig.password
+    });
+
+    await initConnection.execute(`CREATE DATABASE IF NOT EXISTS \`${mysqlConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    await initConnection.end();
+
+    // 連接到指定資料庫
     connection = await mysql.createConnection(mysqlConfig);
 
     // 建立資料表
